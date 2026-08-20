@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
+import sdk from '@farcaster/frame-sdk';
 import FruitNinjaGame from '@/components/FruitNinjaGame';
 import Leaderboard, { LeaderboardEntry } from '@/components/Leaderboard';
 import { ShieldCheck, Share2, Trophy, Play, Lock, LogOut } from 'lucide-react';
@@ -30,8 +31,27 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<'game' | 'leaderboard'>('game');
   const [weeklyScores, setWeeklyScores] = useState<LeaderboardEntry[]>(INITIAL_WEEKLY);
   const [globalScores, setGlobalScores] = useState<LeaderboardEntry[]>(INITIAL_GLOBAL);
+  const [farcasterUser, setFarcasterUser] = useState<string | null>(null);
 
-  const formattedAddress = address
+  // Notify Base & Farcaster Mini App container that UI is ready
+  useEffect(() => {
+    const initSdk = async () => {
+      try {
+        const context = await sdk.context;
+        if (context?.user?.username) {
+          setFarcasterUser(`@${context.user.username}`);
+        }
+        await sdk.actions.ready();
+      } catch (err) {
+        console.log('Not running in frame context or SDK error', err);
+      }
+    };
+    initSdk();
+  }, []);
+
+  const formattedAddress = farcasterUser
+    ? farcasterUser
+    : address
     ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}`
     : null;
 
@@ -83,8 +103,12 @@ export default function Home() {
   };
 
   const shareOnBase = () => {
-    const text = encodeURIComponent('🍉 Just sliced fruits in Base Fruit Ninja! Avoided stones and ranked up. Play gasless on Base 👇');
-    window.open(`https://warpcast.com/~/compose?text=${text}&embeds[]=https://base-fruit-ninja-hazel.vercel.app`, '_blank');
+    const text = encodeURIComponent('🍉 Slicing fruits in Base Fruit Ninja! Avoided stones and ranked up. Play gasless on Base 👇');
+    try {
+      sdk.actions.openUrl(`https://warpcast.com/~/compose?text=${text}&embeds[]=https://base-fruit-ninja-hazel.vercel.app`);
+    } catch {
+      window.open(`https://warpcast.com/~/compose?text=${text}&embeds[]=https://base-fruit-ninja-hazel.vercel.app`, '_blank');
+    }
   };
 
   return (
@@ -98,18 +122,20 @@ export default function Home() {
           </span>
         </div>
 
-        {isConnected && formattedAddress ? (
+        {formattedAddress ? (
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 text-[11px] font-mono bg-[#1c1813] border border-[#3d3226] px-3 py-1.5 rounded-full text-emerald-400">
               <ShieldCheck className="w-3.5 h-3.5" /> {formattedAddress}
             </div>
-            <button
-              onClick={() => disconnect()}
-              title="Disconnect Wallet"
-              className="p-1.5 rounded-full bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-400 hover:text-rose-300 transition-all cursor-pointer shadow-sm active:scale-95 flex items-center justify-center"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
+            {isConnected && (
+              <button
+                onClick={() => disconnect()}
+                title="Disconnect Wallet"
+                className="p-1.5 rounded-full bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-400 hover:text-rose-300 transition-all cursor-pointer shadow-sm active:scale-95 flex items-center justify-center"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         ) : (
           <button
@@ -150,25 +176,7 @@ export default function Home() {
 
       {/* Main View */}
       {currentView === 'game' ? (
-        isConnected && formattedAddress ? (
-          <FruitNinjaGame userAddress={formattedAddress} onGameOver={handleGameOver} />
-        ) : (
-          <div className="w-full max-w-md h-[520px] bg-[#181512] rounded-[32px] border-2 border-[#3d3226] shadow-2xl flex flex-col items-center justify-center p-6 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-[#0052FF]/20 border border-[#0052FF]/50 flex items-center justify-center mb-4 text-[#0052FF] shadow-[0_0_20px_rgba(0,82,255,0.25)]">
-              <Lock className="w-8 h-8" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2">Base Smart Wallet Required</h3>
-            <p className="text-xs text-zinc-400 max-w-[260px] mb-6 leading-relaxed">
-              Connect with your Base Smart Wallet using Passkey or Coinbase to play and submit scores!
-            </p>
-            <button
-              onClick={handleConnectBase}
-              className="w-full max-w-[260px] py-3.5 rounded-2xl bg-[#0052FF] hover:bg-[#0045d8] text-white font-bold text-sm transition-all shadow-[0_0_25px_rgba(0,82,255,0.4)] active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-            >
-              Connect with Base
-            </button>
-          </div>
-        )
+        <FruitNinjaGame userAddress={formattedAddress || 'Player'} onGameOver={handleGameOver} />
       ) : (
         <Leaderboard
           userAddress={formattedAddress || undefined}
