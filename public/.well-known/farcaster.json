@@ -1,0 +1,17 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "frame": {
+    "version": "1",
+    "name": "Fruit Ninja",
+    "iconUrl": "https://images.lumacdn.com/cdn-cgi/image/format=auto,fit=cover,dpr=2,quality=75,width=620,height=324.76190476190476/event-covers/1b/c2d774-897b-4024-8178-081e6a17b07c",
+    "homeUrl": "https://your-domain.vercel.app",
+    "imageUrl": "https://images.lumacdn.com/cdn-cgi/image/format=auto,fit=cover,dpr=2,quality=75,width=620,height=324.76190476190476/event-covers/1b/c2d774-897b-4024-8178-081e6a17b07c",
+    "buttonTitle": "Play Fruit Ninja 🍉",
+    "splashImageUrl": "https://images.lumacdn.com/cdn-cgi/image/format=auto,fit=cover,dpr=2,quality=75,width=620,height=324.76190476190476/event-covers/1b/c2d774-897b-4024-8178-081e6a17b07c",
+    "splashBackgroundColor": "#120f0d"
+  }
+}
