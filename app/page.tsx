@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import FruitNinjaGame from '@/components/FruitNinjaGame';
 import Leaderboard, { LeaderboardEntry } from '@/components/Leaderboard';
-import { Wallet, ShieldCheck, Share2, Trophy, Play, Lock } from 'lucide-react';
+import { Wallet, ShieldCheck, Share2, Trophy, Play, Lock, LogOut } from 'lucide-react';
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000; // 24 Hours Session
 
 const INITIAL_WEEKLY: LeaderboardEntry[] = [
   { address: '0xBoysun...7f92', score: 480 },
@@ -27,32 +29,63 @@ export default function Home() {
   const [weeklyScores, setWeeklyScores] = useState<LeaderboardEntry[]>(INITIAL_WEEKLY);
   const [globalScores, setGlobalScores] = useState<LeaderboardEntry[]>(INITIAL_GLOBAL);
 
-  // Load saved dynamic scores
+  // Check 1-day session & load preserved leaderboard scores
   useEffect(() => {
+    // 1. Load persistent leaderboard data safely
     const savedWeekly = localStorage.getItem('fn_weekly_scores');
     const savedGlobal = localStorage.getItem('fn_global_scores');
     if (savedWeekly) setWeeklyScores(JSON.parse(savedWeekly));
     if (savedGlobal) setGlobalScores(JSON.parse(savedGlobal));
+
+    // 2. Validate 1-day session in sessionStorage (expires on tab close or after 24h)
+    const sessionWallet = sessionStorage.getItem('fn_session_wallet');
+    const sessionExpiry = sessionStorage.getItem('fn_session_expiry');
+
+    if (sessionWallet && sessionExpiry) {
+      const expiryTime = parseInt(sessionExpiry, 10);
+      if (Date.now() < expiryTime) {
+        setWalletAddress(sessionWallet);
+      } else {
+        // Expired after 1 day
+        sessionStorage.removeItem('fn_session_wallet');
+        sessionStorage.removeItem('fn_session_expiry');
+        setWalletAddress(null);
+      }
+    }
   }, []);
 
   const connectBaseWallet = async () => {
-    // Simulated Base Wallet Connection (or real window.ethereum request)
+    let connectedAddr = '';
+
     if (typeof window !== 'undefined' && (window as unknown as { ethereum?: { request: (args: { method: string }) => Promise<string[]> } }).ethereum) {
       try {
         const eth = (window as unknown as { ethereum: { request: (args: { method: string }) => Promise<string[]> } }).ethereum;
         const accounts = await eth.request({ method: 'eth_requestAccounts' });
         if (accounts && accounts[0]) {
           const acc = accounts[0];
-          setWalletAddress(`${acc.substring(0, 6)}...${acc.substring(acc.length - 4)}`);
-          return;
+          connectedAddr = `${acc.substring(0, 6)}...${acc.substring(acc.length - 4)}`;
         }
       } catch (err) {
         console.error('Wallet connection rejected:', err);
       }
     }
 
-    // Fallback Mock Address
-    setWalletAddress('0x' + Math.random().toString(16).substring(2, 6) + '...' + Math.random().toString(16).substring(2, 6));
+    if (!connectedAddr) {
+      // Fallback unique address
+      connectedAddr = '0x' + Math.random().toString(16).substring(2, 6) + '...' + Math.random().toString(16).substring(2, 6);
+    }
+
+    setWalletAddress(connectedAddr);
+
+    // Save session with 1-day limit in sessionStorage
+    sessionStorage.setItem('fn_session_wallet', connectedAddr);
+    sessionStorage.setItem('fn_session_expiry', (Date.now() + ONE_DAY_MS).toString());
+  };
+
+  const disconnectWallet = () => {
+    setWalletAddress(null);
+    sessionStorage.removeItem('fn_session_wallet');
+    sessionStorage.removeItem('fn_session_expiry');
   };
 
   const handleGameOver = (finalScore: number) => {
@@ -105,8 +138,17 @@ export default function Home() {
         </div>
 
         {walletAddress ? (
-          <div className="flex items-center gap-1.5 text-[11px] font-mono bg-[#1c1813] border border-[#3d3226] px-3 py-1 rounded-full text-emerald-400">
-            <ShieldCheck className="w-3.5 h-3.5" /> {walletAddress}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-mono bg-[#1c1813] border border-[#3d3226] px-3 py-1.5 rounded-full text-emerald-400">
+              <ShieldCheck className="w-3.5 h-3.5" /> {walletAddress}
+            </div>
+            <button
+              onClick={disconnectWallet}
+              title="Disconnect Wallet"
+              className="p-1.5 rounded-full bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-400 hover:text-rose-300 transition-all cursor-pointer shadow-sm active:scale-95 flex items-center justify-center"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
         ) : (
           <button
@@ -154,9 +196,9 @@ export default function Home() {
             <div className="w-16 h-16 rounded-2xl bg-[#0052FF]/20 border border-[#0052FF]/50 flex items-center justify-center mb-4 text-[#0052FF] shadow-[0_0_20px_rgba(0,82,255,0.25)]">
               <Lock className="w-8 h-8" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Wallet Required</h3>
+            <h3 className="text-xl font-bold text-white mb-2">Wallet Connection Required</h3>
             <p className="text-xs text-zinc-400 max-w-[260px] mb-6 leading-relaxed">
-              Connect your Base Wallet to slice fruits, record your score, and compete on the Weekly & Global Leaderboards!
+              Connect your Base Wallet to play. Session lasts 1 day or until you close the tab. Leaderboard ranks stay saved!
             </p>
             <button
               onClick={connectBaseWallet}
