@@ -1,14 +1,14 @@
 {
   "accountAssociation": {
-    "header": "",
-    "payload": "",
-    "signature": ""
+    "header": "eyJmaWQiOjEzOTQ4MjIsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHhhY2VkNGE3OWM3YjkxNzdBNjRCOUJhRTBDMjVDNDFFMjYzMDBBMTVkIn0",
+    "payload": "eyJkb21haW4iOiJiYXNlLWZydWl0LW5pbmphLWhhemVsLnZlcmNlbC5hcHAifQ",
+    "signature": "QTMSXYuuk2Wss79UFQD2b1EMLu+E0I44rUCK+P6PT7kT5inv4EHjiXvkfIt/4cWJLfK2mXnNzPHCddhBVi2TJRw="
   },
   "frame": {
     "version": "1",
-    "name": "Fruit Ninja",
+    "name": "Base Fruit Ninja",
     "iconUrl": "https://images.lumacdn.com/cdn-cgi/image/format=auto,fit=cover,dpr=2,quality=75,width=620,height=324.76190476190476/event-covers/1b/c2d774-897b-4024-8178-081e6a17b07c",
-    "homeUrl": "https://your-domain.vercel.app",
+    "homeUrl": "https://base-fruit-ninja-hazel.vercel.app",
     "imageUrl": "https://images.lumacdn.com/cdn-cgi/image/format=auto,fit=cover,dpr=2,quality=75,width=620,height=324.76190476190476/event-covers/1b/c2d774-897b-4024-8178-081e6a17b07c",
     "buttonTitle": "Play Fruit Ninja 🍉",
     "splashImageUrl": "https://images.lumacdn.com/cdn-cgi/image/format=auto,fit=cover,dpr=2,quality=75,width=620,height=324.76190476190476/event-covers/1b/c2d774-897b-4024-8178-081e6a17b07c",
