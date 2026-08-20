@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Calendar, Globe, Clock, Trophy, Users } from 'lucide-react';
+import { Calendar, Globe, Clock, Trophy, Users, UserCheck } from 'lucide-react';
 
 export interface LeaderboardEntry {
   rank?: number;
@@ -20,13 +20,23 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
   const [activeTab, setActiveTab] = useState<'weekly' | 'global'>('weekly');
   const rawList = activeTab === 'weekly' ? weeklyScores : globalScores;
 
-  // Sort descending by score and calculate dynamic ranks
-  const sortedList = [...rawList]
+  // Check if current user is present, if not add with 0 pts
+  let displayList = [...rawList];
+  if (userAddress && !displayList.some(item => item.address.toLowerCase() === userAddress.toLowerCase())) {
+    displayList.push({ address: userAddress, score: 0, timestamp: Date.now() });
+  }
+
+  // Sort descending by score and compute rank
+  const sortedList = displayList
     .sort((a, b) => b.score - a.score)
     .map((item, index) => ({
       ...item,
       rank: index + 1,
     }));
+
+  const currentUserEntry = userAddress
+    ? sortedList.find(item => item.address.toLowerCase() === userAddress.toLowerCase())
+    : null;
 
   return (
     <div className="w-full max-w-md bg-[#181512]/95 backdrop-blur-md rounded-[28px] p-4 sm:p-5 border border-[#3d3226] shadow-2xl text-white my-2">
@@ -75,53 +85,68 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
         </div>
       )}
 
-      {/* Dynamic Scrollable List for All Players */}
-      <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
-        {sortedList.length === 0 ? (
-          <div className="text-center py-8 text-zinc-500 text-xs font-mono">
-            No entries yet. Play a game to set the first score!
+      {/* Persistent Current User Card (if connected) */}
+      {currentUserEntry && (
+        <div className="mb-3 p-3 rounded-2xl bg-gradient-to-r from-[#0052FF]/25 to-transparent border border-[#0052FF]/60 flex items-center justify-between shadow-[0_0_15px_rgba(0,82,255,0.15)]">
+          <div className="flex items-center gap-2.5">
+            <UserCheck className="w-4 h-4 text-[#38bdf8]" />
+            <div className="flex flex-col">
+              <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider">Your Standing</span>
+              <span className="text-xs font-mono font-bold text-white flex items-center gap-1.5">
+                {currentUserEntry.address}
+                <span className="text-[9px] bg-[#0052FF] text-white px-1.5 py-0.2 rounded font-sans">YOU</span>
+              </span>
+            </div>
           </div>
-        ) : (
-          sortedList.map(player => {
-            const isCurrentUser = userAddress && player.address.toLowerCase() === userAddress.toLowerCase();
 
-            let badgeColor = 'text-zinc-400';
-            if (player.rank === 1) badgeColor = 'text-amber-400 font-bold';
-            if (player.rank === 2) badgeColor = 'text-slate-300 font-bold';
-            if (player.rank === 3) badgeColor = 'text-amber-600 font-bold';
+          <div className="flex items-center gap-2 font-mono">
+            <span className="text-xs text-zinc-400">#{currentUserEntry.rank}</span>
+            <span className="font-bold text-xs text-amber-400 bg-amber-950/70 px-2 py-1 rounded-lg border border-amber-900/60">
+              {currentUserEntry.score} PTS
+            </span>
+          </div>
+        </div>
+      )}
 
-            return (
-              <div
-                key={`${player.address}-${player.rank}`}
-                className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
-                  isCurrentUser
-                    ? 'bg-[#0052FF]/15 border-[#0052FF]/60 shadow-[0_0_12px_rgba(0,82,255,0.2)]'
-                    : 'bg-[#221c17]/70 border-[#382d20] hover:border-[#4d3e2b]'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`w-6 text-center font-mono font-black text-sm ${badgeColor}`}>
-                    #{player.rank}
-                  </span>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-mono text-zinc-200">
-                      {player.address}
-                      {isCurrentUser && (
-                        <span className="ml-2 text-[9px] bg-[#0052FF] text-white px-1.5 py-0.2 rounded font-sans">
-                          YOU
-                        </span>
-                      )}
+      {/* Scrollable Leaderboard List */}
+      <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+        {sortedList.map(player => {
+          const isCurrentUser = userAddress && player.address.toLowerCase() === userAddress.toLowerCase();
+
+          let badgeColor = 'text-zinc-400';
+          if (player.rank === 1) badgeColor = 'text-amber-400 font-bold';
+          if (player.rank === 2) badgeColor = 'text-slate-300 font-bold';
+          if (player.rank === 3) badgeColor = 'text-amber-600 font-bold';
+
+          return (
+            <div
+              key={`${player.address}-${player.rank}`}
+              className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
+                isCurrentUser
+                  ? 'bg-[#0052FF]/20 border-[#0052FF] shadow-[0_0_12px_rgba(0,82,255,0.25)]'
+                  : 'bg-[#221c17]/70 border-[#382d20] hover:border-[#4d3e2b]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className={`w-6 text-center font-mono font-black text-sm ${badgeColor}`}>
+                  #{player.rank}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-zinc-200">{player.address}</span>
+                  {isCurrentUser && (
+                    <span className="text-[9px] bg-[#0052FF] text-white px-1.5 py-0.2 rounded font-sans">
+                      YOU
                     </span>
-                  </div>
-                </div>
-
-                <div className="font-mono font-bold text-xs text-amber-400 bg-amber-950/50 px-2.5 py-1 rounded-lg border border-amber-900/50">
-                  {player.score} PTS
+                  )}
                 </div>
               </div>
-            );
-          })
-        )}
+
+              <div className="font-mono font-bold text-xs text-amber-400 bg-amber-950/50 px-2.5 py-1 rounded-lg border border-amber-900/50">
+                {player.score} PTS
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
