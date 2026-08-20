@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import FruitNinjaGame from '@/components/FruitNinjaGame';
 import Leaderboard, { LeaderboardEntry } from '@/components/Leaderboard';
-import { Wallet, ShieldCheck, Share2, Trophy, Play } from 'lucide-react';
+import { Wallet, ShieldCheck, Share2, Trophy, Play, Lock } from 'lucide-react';
 
 const INITIAL_WEEKLY: LeaderboardEntry[] = [
   { address: '0xBoysun...7f92', score: 480 },
@@ -11,8 +11,6 @@ const INITIAL_WEEKLY: LeaderboardEntry[] = [
   { address: '0xNinja...88e1', score: 395 },
   { address: '0xBaseGod...34a9', score: 310 },
   { address: '0xSamurai...99f0', score: 275 },
-  { address: '0xKage...55d1', score: 240 },
-  { address: '0xKatana...33a2', score: 190 },
 ];
 
 const INITIAL_GLOBAL: LeaderboardEntry[] = [
@@ -21,9 +19,6 @@ const INITIAL_GLOBAL: LeaderboardEntry[] = [
   { address: '0xCyber...44b2', score: 980 },
   { address: '0xAlpha...12c4', score: 850 },
   { address: '0xRonin...00d7', score: 790 },
-  { address: '0xShadow...66c9', score: 650 },
-  { address: '0xViper...11e4', score: 580 },
-  { address: '0xBlade...88f2', score: 510 },
 ];
 
 export default function Home() {
@@ -32,7 +27,7 @@ export default function Home() {
   const [weeklyScores, setWeeklyScores] = useState<LeaderboardEntry[]>(INITIAL_WEEKLY);
   const [globalScores, setGlobalScores] = useState<LeaderboardEntry[]>(INITIAL_GLOBAL);
 
-  // Load saved dynamic scores from localStorage on client load
+  // Load saved dynamic scores
   useEffect(() => {
     const savedWeekly = localStorage.getItem('fn_weekly_scores');
     const savedGlobal = localStorage.getItem('fn_global_scores');
@@ -41,16 +36,32 @@ export default function Home() {
   }, []);
 
   const connectBaseWallet = async () => {
-    setWalletAddress('0xBoysun...7f92');
+    // Simulated Base Wallet Connection (or real window.ethereum request)
+    if (typeof window !== 'undefined' && (window as unknown as { ethereum?: { request: (args: { method: string }) => Promise<string[]> } }).ethereum) {
+      try {
+        const eth = (window as unknown as { ethereum: { request: (args: { method: string }) => Promise<string[]> } }).ethereum;
+        const accounts = await eth.request({ method: 'eth_requestAccounts' });
+        if (accounts && accounts[0]) {
+          const acc = accounts[0];
+          setWalletAddress(`${acc.substring(0, 6)}...${acc.substring(acc.length - 4)}`);
+          return;
+        }
+      } catch (err) {
+        console.error('Wallet connection rejected:', err);
+      }
+    }
+
+    // Fallback Mock Address
+    setWalletAddress('0x' + Math.random().toString(16).substring(2, 6) + '...' + Math.random().toString(16).substring(2, 6));
   };
 
   const handleGameOver = (finalScore: number) => {
-    if (finalScore <= 0) return;
+    if (finalScore <= 0 || !walletAddress) return;
 
-    const currentAddr = walletAddress || '0xGuest...' + Math.floor(1000 + Math.random() * 9000);
+    const currentAddr = walletAddress;
 
     const updateScoreList = (prev: LeaderboardEntry[]) => {
-      const existingIdx = prev.findIndex(item => item.address === currentAddr);
+      const existingIdx = prev.findIndex(item => item.address.toLowerCase() === currentAddr.toLowerCase());
       let updated = [...prev];
 
       if (existingIdx >= 0) {
@@ -134,9 +145,27 @@ export default function Home() {
         </button>
       </div>
 
-      {/* View Switch */}
+      {/* View Switch with Wallet Gate */}
       {currentView === 'game' ? (
-        <FruitNinjaGame userAddress={walletAddress || 'Guest'} onGameOver={handleGameOver} />
+        walletAddress ? (
+          <FruitNinjaGame userAddress={walletAddress} onGameOver={handleGameOver} />
+        ) : (
+          <div className="w-full max-w-md h-[520px] bg-[#181512] rounded-[32px] border-2 border-[#3d3226] shadow-2xl flex flex-col items-center justify-center p-6 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-[#0052FF]/20 border border-[#0052FF]/50 flex items-center justify-center mb-4 text-[#0052FF] shadow-[0_0_20px_rgba(0,82,255,0.25)]">
+              <Lock className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">Wallet Required</h3>
+            <p className="text-xs text-zinc-400 max-w-[260px] mb-6 leading-relaxed">
+              Connect your Base Wallet to slice fruits, record your score, and compete on the Weekly & Global Leaderboards!
+            </p>
+            <button
+              onClick={connectBaseWallet}
+              className="w-full max-w-[260px] py-3.5 rounded-2xl bg-[#0052FF] hover:bg-[#0045d8] text-white font-bold text-sm transition-all shadow-[0_0_25px_rgba(0,82,255,0.4)] active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Wallet className="w-4 h-4" /> Connect Base Wallet
+            </button>
+          </div>
+        )
       ) : (
         <Leaderboard
           userAddress={walletAddress || undefined}
