@@ -1,12 +1,11 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './globals.css';
-
-const inter = Inter({ subsets: ['latin'] });
+import OnchainProviders from '@/components/OnchainProviders';
+import '@coinbase/onchainkit/styles.css';
 
 export const metadata: Metadata = {
-  title: 'Base Fruit Ninja 🍉',
-  description: 'Gasless Fruit Ninja mini-game on Base',
+  title: 'Base Fruit Ninja',
+  description: 'Play Fruit Ninja Mini App on Base Network',
 };
 
 export default function RootLayout({
@@ -16,7 +15,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body>
+        <OnchainProviders>{children}</OnchainProviders>
+      </body>
     </html>
   );
 }
