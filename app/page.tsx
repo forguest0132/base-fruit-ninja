@@ -149,7 +149,7 @@ export default function Home() {
       {/* Gasless Sponsored Badge */}
       <div className="w-full max-w-md bg-emerald-950/40 border border-emerald-800/40 rounded-xl px-3 py-1.5 mb-3 flex items-center justify-between text-[10px] font-mono text-emerald-300">
         <span>⚡ 100% Gasless Gameplay</span>
-        <span className="text-emerald-400 font-bold">Sponsored by @0xboysun 🍉</span>
+        <span className="text-emerald-400 font-bold">0xboysun</span>
       </div>
 
       {/* Main Mode Switcher */}

@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import './globals.css';
 import OnchainProviders from '@/components/OnchainProviders';
 import FrameProvider from '@/components/FrameProvider';
-import '@coinbase/onchainkit/styles.css';
 
 export const metadata: Metadata = {
   title: 'Base Fruit Ninja',

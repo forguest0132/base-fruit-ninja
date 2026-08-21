@@ -1,11 +1,10 @@
 'use client';
 
 import React, { ReactNode } from 'react';
-import { OnchainKitProvider } from '@coinbase/onchainkit';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { WagmiProvider, createConfig, http } from 'wagmi';
+import { createConfig, http, WagmiProvider } from 'wagmi';
 import { base } from 'wagmi/chains';
-import { coinbaseWallet } from 'wagmi/connectors';
+import { coinbaseWallet, injected } from 'wagmi/connectors';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const queryClient = new QueryClient();
 
@@ -14,8 +13,9 @@ const wagmiConfig = createConfig({
   connectors: [
     coinbaseWallet({
       appName: 'Base Fruit Ninja',
-      preference: 'smartWalletOnly',
+      preference: 'all',
     }),
+    injected(),
   ],
   ssr: true,
   transports: {
@@ -27,9 +27,7 @@ export default function OnchainProviders({ children }: { children: ReactNode }) 
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <OnchainKitProvider chain={base}>
-          {children}
-        </OnchainKitProvider>
+        {children}
       </QueryClientProvider>
     </WagmiProvider>
   );
