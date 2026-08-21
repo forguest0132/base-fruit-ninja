@@ -44,6 +44,7 @@ interface GameObject {
 interface LeaderboardEntry {
   address: string;
   score: number;
+  timestamp: number;
 }
 
 export default function Home() {
@@ -59,6 +60,10 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
+
+  // Leaderboard Modal States
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  const [leaderboardTab, setLeaderboardTab] = useState<'weekly' | 'monthly'>('weekly');
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   const { data: hash, writeContract, isPending } = useWriteContract();
@@ -67,7 +72,6 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // High performance game state refs (avoids React render desync)
   const gameStateRef = useRef({
     isPlaying: false,
     score: 0,
@@ -96,7 +100,7 @@ export default function Home() {
     }
   }, []);
 
-  // Web Audio Synth
+  // Web Audio Synthesizer
   const playSound = (type: 'slice' | 'bomb' | 'miss' | 'stone' | 'over') => {
     try {
       if (!audioCtxRef.current) {
@@ -161,7 +165,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const savedLb = localStorage.getItem('base_ninja_leaderboard');
+    const savedLb = localStorage.getItem('base_ninja_leaderboard_v2');
     if (savedLb) {
       try {
         setLeaderboard(JSON.parse(savedLb));
@@ -284,13 +288,13 @@ export default function Home() {
         if (existingIndex >= 0) {
           if (finalScore > updated[existingIndex].score) {
             updated[existingIndex].score = finalScore;
+            updated[existingIndex].timestamp = Date.now();
           }
         } else {
-          updated.push({ address: activeAddress, score: finalScore });
+          updated.push({ address: activeAddress, score: finalScore, timestamp: Date.now() });
         }
         updated.sort((a, b) => b.score - a.score);
-        updated = updated.slice(0, 5);
-        localStorage.setItem('base_ninja_leaderboard', JSON.stringify(updated));
+        localStorage.setItem('base_ninja_leaderboard_v2', JSON.stringify(updated));
         return updated;
       });
     }
@@ -323,7 +327,7 @@ export default function Home() {
     setIsPlaying(true);
   };
 
-  // Canvas Game Engine Loop
+  // Canvas Engine Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -339,7 +343,7 @@ export default function Home() {
 
       ctx.clearRect(0, 0, width, height);
 
-      // 1. Spawning
+      // Spawning
       if (g.isPlaying && Date.now() - g.lastSpawn > g.spawnInterval) {
         g.lastSpawn = Date.now();
         const rand = Math.random();
@@ -372,17 +376,16 @@ export default function Home() {
         });
       }
 
-      // 2. Update & Draw Game Objects
+      // Render Objects
       for (let i = g.objects.length - 1; i >= 0; i--) {
         const obj = g.objects[i];
 
         if (!obj.sliced) {
           obj.x += obj.vx;
           obj.y += obj.vy;
-          obj.vy += 0.28; // gravity
+          obj.vy += 0.28;
           obj.rotation += obj.vRot;
 
-          // Falling off bottom check
           if (obj.y > height + 40) {
             if (g.isPlaying && !obj.missed && !obj.isBomb && !obj.isStone) {
               obj.missed = true;
@@ -393,7 +396,6 @@ export default function Home() {
             continue;
           }
 
-          // Draw Active Object
           ctx.save();
           ctx.translate(obj.x, obj.y);
           ctx.rotate(obj.rotation);
@@ -403,7 +405,6 @@ export default function Home() {
           ctx.fillText(obj.emoji, 0, 0);
           ctx.restore();
         } else {
-          // Draw Sliced Pieces
           if (obj.leftPiece && obj.rightPiece) {
             obj.leftPiece.x += obj.leftPiece.vx;
             obj.leftPiece.y += obj.leftPiece.vy;
@@ -442,7 +443,7 @@ export default function Home() {
         }
       }
 
-      // 3. Draw Blade Trail
+      // Blade Trail
       if (g.trail.length > 1) {
         ctx.beginPath();
         ctx.moveTo(g.trail[0].x, g.trail[0].y);
@@ -458,7 +459,6 @@ export default function Home() {
         ctx.shadowBlur = 0;
       }
 
-      // Fade out trail
       g.trail = g.trail.filter((pt) => {
         pt.age -= 1;
         return pt.age > 0;
@@ -471,7 +471,6 @@ export default function Home() {
     return () => cancelAnimationFrame(animId);
   }, []);
 
-  // Blade Slash Handler (Direct Canvas Coordinates)
   const handleBladeMove = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -487,7 +486,6 @@ export default function Home() {
 
     if (!g.isPlaying) return;
 
-    // Check hit collision against active objects
     for (const obj of g.objects) {
       if (!obj.sliced) {
         const dist = Math.hypot(obj.x - x, obj.y - y);
@@ -513,19 +511,35 @@ export default function Home() {
     }
   };
 
+  // Filter leaderboard based on Weekly / Monthly
+  const getFilteredLeaderboard = () => {
+    const now = Date.now();
+    const timeLimit = leaderboardTab === 'weekly' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+    return leaderboard.filter((item) => !item.timestamp || now - item.timestamp <= timeLimit);
+  };
+
   if (!mounted) return null;
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-between p-4 selection:bg-blue-500 selection:text-white">
-      {/* Header */}
+      {/* Top Header */}
       <header className="w-full max-w-md flex justify-between items-center py-2.5 px-4 bg-slate-900/80 backdrop-blur rounded-2xl border border-slate-800 shadow-lg">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
           <span className="font-black text-sm tracking-wide text-slate-200">BASE NINJA</span>
         </div>
-        <div>
+
+        <div className="flex items-center gap-2">
+          {/* Leaderboard Trigger Button */}
+          <button
+            onClick={() => setIsLeaderboardOpen(true)}
+            className="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold px-2.5 py-1 rounded-xl border border-amber-500/30 transition flex items-center gap-1 cursor-pointer"
+          >
+            🏆 Leaderboard
+          </button>
+
           {isUserConnected && activeAddress ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <span className="text-xs bg-slate-800 text-blue-400 font-mono px-2.5 py-1 rounded-full border border-blue-500/30">
                 {formatAddress(activeAddress)}
               </span>
@@ -552,7 +566,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Screen */}
+      {/* Main Game Interface */}
       <div className="w-full max-w-md my-auto flex flex-col items-center gap-4">
         {!isUserConnected ? (
           <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
@@ -649,37 +663,89 @@ export default function Home() {
                 </div>
               )}
             </div>
-
-            {/* Leaderboard */}
-            <div className="w-full bg-slate-950/60 p-4 border-t border-slate-800">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">🏆 Top Onchain Ninjas</span>
-                <span className="text-[10px] text-blue-400 font-mono">Base Network</span>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {leaderboard.length === 0 ? (
-                  <span className="text-xs text-slate-600 text-center py-2">No scores recorded yet. Be the first!</span>
-                ) : (
-                  leaderboard.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="flex justify-between items-center bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800/80 text-xs font-mono"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className={`font-bold ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-amber-600' : 'text-slate-500'}`}>
-                          #{idx + 1}
-                        </span>
-                        <span className="text-slate-300">{formatAddress(item.address)}</span>
-                      </div>
-                      <span className="font-bold text-blue-400">{item.score} pts</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
           </div>
         )}
       </div>
+
+      {/* Leaderboard Modal */}
+      {isLeaderboardOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🏆</span>
+                <h3 className="text-lg font-black text-slate-100">Leaderboard</h3>
+              </div>
+              <button
+                onClick={() => setIsLeaderboardOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Weekly / Monthly Switch Tabs */}
+            <div className="grid grid-cols-2 gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800/80 mb-4">
+              <button
+                onClick={() => setLeaderboardTab('weekly')}
+                className={`py-1.5 text-xs font-bold rounded-lg transition ${
+                  leaderboardTab === 'weekly'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Weekly
+              </button>
+              <button
+                onClick={() => setLeaderboardTab('monthly')}
+                className={`py-1.5 text-xs font-bold rounded-lg transition ${
+                  leaderboardTab === 'monthly'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Monthly
+              </button>
+            </div>
+
+            {/* Rank List */}
+            <div className="flex flex-col gap-2 max-h-60 overflow-y-auto">
+              {getFilteredLeaderboard().length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-500">
+                  No {leaderboardTab} scores recorded yet!
+                </div>
+              ) : (
+                getFilteredLeaderboard().map((entry, idx) => (
+                  <div
+                    key={idx}
+                    className="flex justify-between items-center bg-slate-950/50 px-3.5 py-2.5 rounded-xl border border-slate-800/60 text-xs font-mono"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className={`font-black text-sm ${
+                          idx === 0
+                            ? 'text-amber-400'
+                            : idx === 1
+                            ? 'text-slate-300'
+                            : idx === 2
+                            ? 'text-amber-600'
+                            : 'text-slate-600'
+                        }`}
+                      >
+                        #{idx + 1}
+                      </span>
+                      <span className="text-slate-300 font-semibold">{formatAddress(entry.address)}</span>
+                    </div>
+                    <span className="font-bold text-blue-400 bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-800/30">
+                      {entry.score} pts
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="w-full max-w-md flex flex-col items-center gap-1 py-2 text-center">
