@@ -61,7 +61,7 @@ export default function Home() {
   const [gameOver, setGameOver] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
 
-  // Leaderboard Modal States
+  // Leaderboard States
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [leaderboardTab, setLeaderboardTab] = useState<'weekly' | 'monthly'>('weekly');
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -100,7 +100,7 @@ export default function Home() {
     }
   }, []);
 
-  // Web Audio Synthesizer
+  // Web Audio Synth
   const playSound = (type: 'slice' | 'bomb' | 'miss' | 'stone' | 'over') => {
     try {
       if (!audioCtxRef.current) {
@@ -327,14 +327,15 @@ export default function Home() {
     setIsPlaying(true);
   };
 
-  // Canvas Engine Loop
+  // Reliable Canvas Engine Hook (Re-attaches when isSessionActive is true)
   useEffect(() => {
+    if (!isSessionActive) return;
+
+    let animId: number;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    let animId: number;
 
     const gameLoop = () => {
       const g = gameStateRef.current;
@@ -343,7 +344,7 @@ export default function Home() {
 
       ctx.clearRect(0, 0, width, height);
 
-      // Spawning
+      // Spawning Loop
       if (g.isPlaying && Date.now() - g.lastSpawn > g.spawnInterval) {
         g.lastSpawn = Date.now();
         const rand = Math.random();
@@ -469,7 +470,7 @@ export default function Home() {
 
     animId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animId);
-  }, []);
+  }, [isSessionActive]);
 
   const handleBladeMove = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
@@ -511,7 +512,6 @@ export default function Home() {
     }
   };
 
-  // Filter leaderboard based on Weekly / Monthly
   const getFilteredLeaderboard = () => {
     const now = Date.now();
     const timeLimit = leaderboardTab === 'weekly' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
@@ -530,7 +530,6 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Leaderboard Trigger Button */}
           <button
             onClick={() => setIsLeaderboardOpen(true)}
             className="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold px-2.5 py-1 rounded-xl border border-amber-500/30 transition flex items-center gap-1 cursor-pointer"
@@ -566,7 +565,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Game Interface */}
+      {/* Main Game Card */}
       <div className="w-full max-w-md my-auto flex flex-col items-center gap-4">
         {!isUserConnected ? (
           <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
@@ -633,7 +632,7 @@ export default function Home() {
               />
 
               {!isPlaying && !gameOver && (
-                <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center z-20">
+                <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-20">
                   <span className="text-6xl mb-3 animate-bounce">⚔️</span>
                   <h3 className="text-xl font-black text-slate-100">Ready to Slice?</h3>
                   <p className="text-xs text-slate-400 mt-1 mb-6">
@@ -678,7 +677,7 @@ export default function Home() {
               </div>
               <button
                 onClick={() => setIsLeaderboardOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold transition"
+                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold transition cursor-pointer"
               >
                 ✕
               </button>
@@ -688,7 +687,7 @@ export default function Home() {
             <div className="grid grid-cols-2 gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800/80 mb-4">
               <button
                 onClick={() => setLeaderboardTab('weekly')}
-                className={`py-1.5 text-xs font-bold rounded-lg transition ${
+                className={`py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
                   leaderboardTab === 'weekly'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
@@ -698,7 +697,7 @@ export default function Home() {
               </button>
               <button
                 onClick={() => setLeaderboardTab('monthly')}
-                className={`py-1.5 text-xs font-bold rounded-lg transition ${
+                className={`py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
                   leaderboardTab === 'monthly'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
