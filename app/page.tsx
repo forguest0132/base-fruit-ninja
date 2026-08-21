@@ -73,7 +73,7 @@ export default function Home() {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // Web Audio Synthesizer (Zero External Assets)
+  // Audio synthesizer
   const playSound = (type: 'slice' | 'bomb' | 'miss' | 'stone' | 'over') => {
     try {
       if (!audioCtxRef.current) {
@@ -130,7 +130,7 @@ export default function Home() {
         osc.stop(now + 0.4);
       }
     } catch {
-      // Audio fallback
+      // Audio safety
     }
   };
 
@@ -139,6 +139,7 @@ export default function Home() {
     return `${addr.slice(0, 4)}...${addr.slice(-6)}`;
   };
 
+  // Load Leaderboard & High Score
   useEffect(() => {
     const savedLb = localStorage.getItem('base_ninja_leaderboard');
     if (savedLb) {
@@ -154,6 +155,7 @@ export default function Home() {
     }
   }, [address]);
 
+  // Whitelist check
   useEffect(() => {
     if (!isConnected || !address) {
       setIsSessionActive(false);
@@ -167,6 +169,7 @@ export default function Home() {
     setIsSessionActive(savedSession === 'active');
   }, [address, isConnected]);
 
+  // Transaction confirmed
   useEffect(() => {
     if (isConfirmed && address) {
       sessionStorage.setItem(`session_${address.toLowerCase()}`, 'active');
@@ -186,10 +189,29 @@ export default function Home() {
     });
   };
 
-  const handleConnectWallet = () => {
-    const injectedConnector = connectors.find((c) => c.id === 'injected') || connectors[0];
-    if (injectedConnector) {
-      connect({ connector: injectedConnector });
+  // Reliable Multi-connector Wallet Connect
+  const handleConnectWallet = async () => {
+    if (connectors && connectors.length > 0) {
+      const targetConnector =
+        connectors.find((c) => c.id === 'injected') ||
+        connectors.find((c) => c.name.toLowerCase().includes('injected')) ||
+        connectors[0];
+
+      if (targetConnector) {
+        connect({ connector: targetConnector });
+        return;
+      }
+    }
+
+    // Direct Browser Wallet Fallback
+    if (typeof window !== 'undefined' && (window as unknown as { ethereum?: { request: (args: { method: string }) => Promise<unknown> } }).ethereum) {
+      try {
+        await (window as unknown as { ethereum: { request: (args: { method: string }) => Promise<unknown> } }).ethereum.request({
+          method: 'eth_requestAccounts',
+        });
+      } catch (err) {
+        console.error('Wallet connection error:', err);
+      }
     }
   };
 
@@ -238,7 +260,7 @@ export default function Home() {
     const spawnInterval = setInterval(() => {
       const rand = Math.random();
       const isBomb = rand < 0.15;
-      const isStone = !isBomb && rand < 0.32; // Stone spawn chance
+      const isStone = !isBomb && rand < 0.32;
 
       const emojis = ['🍉', '🍎', '🍌', '🍍', '🍓', '🍊', '🍇'];
       let emoji = emojis[Math.floor(Math.random() * emojis.length)];
@@ -269,7 +291,6 @@ export default function Home() {
           const nextX = f.x + f.vx;
           const nextVy = f.vy + 0.2;
 
-          // Missing a normal fruit loses a life
           if (nextY > 430 && !f.sliced && !f.missed) {
             if (!f.isBomb && !f.isStone) {
               playSound('miss');
@@ -304,7 +325,7 @@ export default function Home() {
     };
   }, [isPlaying]);
 
-  // Update Leaderboard on Game Over
+  // High score update
   useEffect(() => {
     if (gameOver && address && score > 0) {
       if (score > highScore) {
@@ -349,7 +370,7 @@ export default function Home() {
               triggerGameOver();
             } else if (f.isStone) {
               playSound('stone');
-              deductLife(); // Stone hit deducts 1 life
+              deductLife();
             } else {
               playSound('slice');
               setScore((s) => s + 1);
@@ -391,7 +412,7 @@ export default function Home() {
           ) : (
             <button
               onClick={handleConnectWallet}
-              className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-xl font-bold transition shadow-sm"
+              className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-xl font-bold transition shadow-sm cursor-pointer"
             >
               Connect
             </button>
@@ -408,7 +429,7 @@ export default function Home() {
             <p className="text-xs text-slate-400 mt-2 mb-6">Connect your Base wallet to slice fruits and climb the rank.</p>
             <button
               onClick={handleConnectWallet}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
             >
               Connect Wallet 🔵
             </button>
@@ -423,7 +444,7 @@ export default function Home() {
             <button
               onClick={handleStartSession}
               disabled={isPending || isConfirming}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30 disabled:opacity-50"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30 disabled:opacity-50 cursor-pointer"
             >
               {isPending ? 'Check Wallet...' : isConfirming ? 'Creating Session...' : 'Start Session 🔵'}
             </button>
@@ -489,7 +510,7 @@ export default function Home() {
                   <p className="text-xs text-slate-400 mt-1 mb-6">Slice fruits! Avoid 💣 Bombs and 🪨 Rocks (-1 Life)!</p>
                   <button
                     onClick={startGame}
-                    className="px-8 py-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30"
+                    className="px-8 py-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
                   >
                     Play Now 🍉
                   </button>
@@ -504,14 +525,14 @@ export default function Home() {
                   <p className="text-xs text-slate-400 mb-6">Personal Best: <span className="font-bold text-amber-400 font-mono">{highScore}</span></p>
                   <button
                     onClick={startGame}
-                    className="px-8 py-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30"
+                    className="px-8 py-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
                   >
                     Play Again 🔄
                   </button>
                 </div>
               )}
 
-              {/* Items */}
+              {/* Fruits and Bombs */}
               {fruits.map((f) => (
                 <div
                   key={f.id}
@@ -568,7 +589,7 @@ export default function Home() {
             rel="noopener noreferrer"
             className="text-slate-200 font-semibold underline hover:text-blue-400 transition"
           >
-            @0xboysun
+            0xboysun
           </a>
         </span>
         <span className="text-[10px] font-mono text-slate-600">
