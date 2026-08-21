@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import Leaderboard, { LeaderboardEntry } from '@/components/Leaderboard';
+import { supabase } from '@/lib/supabase';
 
 const CONTRACT_ADDRESS = '0xd807742953d3cB55334f53495B5a3b08837c342E';
 const BUILDER_WALLET = '0x4ECd53055A78bdB5DAfe9ba5154e48906FBe6AEc'.toLowerCase();
@@ -56,7 +57,6 @@ export default function Home() {
   const [gameOver, setGameOver] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
 
-  // Leaderboard Modal State
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
@@ -80,8 +80,53 @@ export default function Home() {
   const activeAddress = wagmiAddress || directAddress;
   const isUserConnected = wagmiConnected || !!directAddress;
 
+  const fetchGlobalLeaderboard = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('leaderboards')
+        .select('address, score, created_at')
+        .order('score', { ascending: false });
+
+      if (error) {
+        console.error('Supabase fetch error:', error);
+        return;
+      }
+
+      if (data) {
+        const userBestMap = new Map<string, { address: string; score: number; timestamp: number }>();
+
+        data.forEach((item: any) => {
+          const addrKey = item.address.toLowerCase();
+          const timestamp = new Date(item.created_at).getTime();
+          if (!userBestMap.has(addrKey) || userBestMap.get(addrKey)!.score < item.score) {
+            userBestMap.set(addrKey, {
+              address: item.address,
+              score: item.score,
+              timestamp,
+            });
+          }
+        });
+
+        const formatted = Array.from(userBestMap.values()).sort((a, b) => b.score - a.score);
+        setLeaderboard(formatted);
+
+        if (activeAddress) {
+          const userEntry = formatted.find((p) => p.address.toLowerCase() === activeAddress.toLowerCase());
+          if (userEntry) {
+            setHighScore(userEntry.score);
+            gameStateRef.current.highScore = userEntry.score;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Leaderboard error:', err);
+    }
+  }, [activeAddress]);
+
   useEffect(() => {
     setMounted(true);
+    fetchGlobalLeaderboard();
+
     if (typeof window !== 'undefined' && (window as any).ethereum) {
       (window as any).ethereum
         .request({ method: 'eth_accounts' })
@@ -92,9 +137,14 @@ export default function Home() {
         })
         .catch(() => {});
     }
-  }, []);
+  }, [fetchGlobalLeaderboard]);
 
-  // Web Audio Synth
+  useEffect(() => {
+    if (isLeaderboardOpen) {
+      fetchGlobalLeaderboard();
+    }
+  }, [isLeaderboardOpen, fetchGlobalLeaderboard]);
+
   const playSound = (type: 'slice' | 'bomb' | 'miss' | 'stone' | 'over') => {
     try {
       if (!audioCtxRef.current) {
@@ -157,25 +207,6 @@ export default function Home() {
     if (!addr) return '';
     return `${addr.slice(0, 4)}...${addr.slice(-6)}`;
   };
-
-  useEffect(() => {
-    const savedLb = localStorage.getItem('base_ninja_leaderboard_all');
-    if (savedLb) {
-      try {
-        setLeaderboard(JSON.parse(savedLb));
-      } catch {
-        setLeaderboard([]);
-      }
-    }
-    if (activeAddress) {
-      const saved = localStorage.getItem(`highScore_${activeAddress.toLowerCase()}`);
-      if (saved) {
-        const hs = parseInt(saved, 10);
-        setHighScore(hs);
-        gameStateRef.current.highScore = hs;
-      }
-    }
-  }, [activeAddress]);
 
   useEffect(() => {
     if (!isUserConnected || !activeAddress) {
@@ -260,7 +291,7 @@ export default function Home() {
     disconnect();
   };
 
-  const triggerGameOver = () => {
+  const triggerGameOver = async () => {
     playSound('over');
     gameStateRef.current.isPlaying = false;
     gameStateRef.current.lives = 0;
@@ -273,24 +304,19 @@ export default function Home() {
       if (finalScore > gameStateRef.current.highScore) {
         gameStateRef.current.highScore = finalScore;
         setHighScore(finalScore);
-        localStorage.setItem(`highScore_${activeAddress.toLowerCase()}`, finalScore.toString());
       }
 
-      setLeaderboard((prev) => {
-        const existingIndex = prev.findIndex((e) => e.address.toLowerCase() === activeAddress.toLowerCase());
-        let updated = [...prev];
-        if (existingIndex >= 0) {
-          if (finalScore > updated[existingIndex].score) {
-            updated[existingIndex].score = finalScore;
-            updated[existingIndex].timestamp = Date.now();
-          }
-        } else {
-          updated.push({ address: activeAddress, score: finalScore, timestamp: Date.now() });
-        }
-        updated.sort((a, b) => b.score - a.score);
-        localStorage.setItem('base_ninja_leaderboard_all', JSON.stringify(updated));
-        return updated;
-      });
+      try {
+        await supabase.from('leaderboards').insert([
+          {
+            address: activeAddress.toLowerCase(),
+            score: finalScore,
+          },
+        ]);
+        fetchGlobalLeaderboard();
+      } catch (err) {
+        console.error('Failed to submit score to Supabase:', err);
+      }
     }
   };
 
@@ -321,7 +347,6 @@ export default function Home() {
     setIsPlaying(true);
   };
 
-  // Canvas Loop
   useEffect(() => {
     if (!isSessionActive) return;
 
@@ -338,7 +363,6 @@ export default function Home() {
 
       ctx.clearRect(0, 0, width, height);
 
-      // Spawning
       if (g.isPlaying && Date.now() - g.lastSpawn > g.spawnInterval) {
         g.lastSpawn = Date.now();
         const rand = Math.random();
@@ -371,7 +395,6 @@ export default function Home() {
         });
       }
 
-      // Render Objects
       for (let i = g.objects.length - 1; i >= 0; i--) {
         const obj = g.objects[i];
 
@@ -438,7 +461,6 @@ export default function Home() {
         }
       }
 
-      // Blade Trail
       if (g.trail.length > 1) {
         ctx.beginPath();
         ctx.moveTo(g.trail[0].x, g.trail[0].y);
@@ -510,7 +532,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-between p-4 selection:bg-blue-500 selection:text-white">
-      {/* Header */}
       <header className="w-full max-w-md flex justify-between items-center py-2.5 px-4 bg-slate-900/80 backdrop-blur rounded-2xl border border-slate-800 shadow-lg">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
@@ -553,7 +574,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Game Interface */}
       <div className="w-full max-w-md my-auto flex flex-col items-center gap-4">
         {!isUserConnected ? (
           <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
@@ -584,7 +604,6 @@ export default function Home() {
           </div>
         ) : (
           <div className="w-full relative bg-slate-900/90 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col items-center">
-            {/* Score Bar */}
             <div className="w-full flex justify-between items-center p-4 bg-slate-950/40 border-b border-slate-800/60">
               <div className="flex flex-col">
                 <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Score</span>
@@ -606,7 +625,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Canvas Game Arena */}
             <div className="relative w-full h-[400px] bg-gradient-to-b from-slate-950/40 to-slate-900/60 flex items-center justify-center overflow-hidden select-none">
               <canvas
                 ref={canvasRef}
@@ -654,7 +672,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* Leaderboard Modal */}
       {isLeaderboardOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="relative w-full max-w-md">
@@ -672,7 +689,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Footer */}
       <footer className="w-full max-w-md flex flex-col items-center gap-1 py-2 text-center">
         <span className="text-[11px] text-slate-400">
           Built on <span className="text-blue-400 font-semibold">Base</span> by{' '}
