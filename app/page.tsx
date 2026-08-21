@@ -327,7 +327,7 @@ export default function Home() {
     setIsPlaying(true);
   };
 
-  // Reliable Canvas Engine Hook (Re-attaches when isSessionActive is true)
+  // Canvas Engine Hook
   useEffect(() => {
     if (!isSessionActive) return;
 
@@ -344,7 +344,7 @@ export default function Home() {
 
       ctx.clearRect(0, 0, width, height);
 
-      // Spawning Loop
+      // Spawning
       if (g.isPlaying && Date.now() - g.lastSpawn > g.spawnInterval) {
         g.lastSpawn = Date.now();
         const rand = Math.random();
@@ -512,10 +512,33 @@ export default function Home() {
     }
   };
 
+  // Fixed Calendar UTC Reset: Weekly (Monday 00:00 UTC) & Monthly (1st of month 00:00 UTC)
   const getFilteredLeaderboard = () => {
-    const now = Date.now();
-    const timeLimit = leaderboardTab === 'weekly' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
-    return leaderboard.filter((item) => !item.timestamp || now - item.timestamp <= timeLimit);
+    const now = new Date();
+
+    if (leaderboardTab === 'weekly') {
+      // Calculate start of current week: Monday 12:00 AM UTC (00:00:00.000 UTC)
+      const dayOfWeek = now.getUTCDay(); // 0 is Sunday, 1 is Monday, ... 6 is Saturday
+      const diffToMonday = (dayOfWeek + 6) % 7;
+      const startOfWeek = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() - diffToMonday,
+        0, 0, 0, 0
+      )).getTime();
+
+      return leaderboard.filter((item) => item.timestamp && item.timestamp >= startOfWeek);
+    } else {
+      // Calculate start of current month: 1st day 12:00 AM UTC (00:00:00.000 UTC)
+      const startOfMonth = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        1,
+        0, 0, 0, 0
+      )).getTime();
+
+      return leaderboard.filter((item) => item.timestamp && item.timestamp >= startOfMonth);
+    }
   };
 
   if (!mounted) return null;
@@ -673,7 +696,12 @@ export default function Home() {
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🏆</span>
-                <h3 className="text-lg font-black text-slate-100">Leaderboard</h3>
+                <div>
+                  <h3 className="text-lg font-black text-slate-100">Leaderboard</h3>
+                  <p className="text-[10px] text-slate-400">
+                    {leaderboardTab === 'weekly' ? 'Resets Mondays at 12:00 AM UTC' : 'Resets 1st of every month at 12:00 AM UTC'}
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setIsLeaderboardOpen(false)}
@@ -711,7 +739,7 @@ export default function Home() {
             <div className="flex flex-col gap-2 max-h-60 overflow-y-auto">
               {getFilteredLeaderboard().length === 0 ? (
                 <div className="text-center py-8 text-xs text-slate-500">
-                  No {leaderboardTab} scores recorded yet!
+                  No {leaderboardTab} scores recorded in this period!
                 </div>
               ) : (
                 getFilteredLeaderboard().map((entry, idx) => (
