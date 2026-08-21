@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 
 const CONTRACT_ADDRESS = '0xd807742953d3cB55334f53495B5a3b08837c342E';
 const BUILDER_WALLET = '0x4ECd53055A78bdB5DAfe9ba5154e48906FBe6AEc'.toLowerCase();
@@ -37,6 +37,9 @@ interface FruitItem {
 
 export default function Home() {
   const { address, isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
+  const { disconnect } = useDisconnect();
+
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [lives, setLives] = useState(3);
@@ -48,12 +51,9 @@ export default function Home() {
   const { data: hash, writeContract, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const fruitsRef = useRef<FruitItem[]>([]);
-  fruitsRef.current = fruits;
 
-  // Format address: 0x12...a1b2c3 (4 prefix, ..., 6 suffix)
+  // Format address: 0x12...a1b2c3
   const formatAddress = (addr: string | undefined) => {
     if (!addr) return '';
     return `${addr.slice(0, 4)}...${addr.slice(-6)}`;
@@ -67,7 +67,7 @@ export default function Home() {
     }
 
     if (address.toLowerCase() === BUILDER_WALLET) {
-      setIsSessionActive(true); // Builder bypasses gas requirement completely
+      setIsSessionActive(true); // Builder bypasses gas requirement
       return;
     }
 
@@ -95,7 +95,7 @@ export default function Home() {
     }
   }, [address]);
 
-  // Trigger Onchain Session Start (0 ETH fee)
+  // Trigger Onchain Session Start
   const handleStartSession = () => {
     if (address?.toLowerCase() === BUILDER_WALLET) {
       setIsSessionActive(true);
@@ -106,6 +106,14 @@ export default function Home() {
       abi: SESSION_ABI,
       functionName: 'startSession',
     });
+  };
+
+  // Connect first available wallet connector (Injected / Rabby / Metamask)
+  const handleConnectWallet = () => {
+    const injectedConnector = connectors.find((c) => c.id === 'injected') || connectors[0];
+    if (injectedConnector) {
+      connect({ connector: injectedConnector });
+    }
   };
 
   // Start Game
@@ -219,24 +227,37 @@ export default function Home() {
                   BUILDER
                 </span>
               )}
+              <button
+                onClick={() => disconnect()}
+                className="text-[10px] text-slate-500 hover:text-red-400 transition"
+              >
+                ✕
+              </button>
             </div>
           ) : (
-            <span className="text-xs text-slate-500 font-medium">Not Connected</span>
+            <button
+              onClick={handleConnectWallet}
+              className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-xl font-bold transition shadow-sm"
+            >
+              Connect
+            </button>
           )}
         </div>
       </header>
 
-      {/* Main Game Screen */}
+      {/* Main Screen */}
       <div className="w-full max-w-md my-auto flex flex-col items-center">
-        {/* Verification / Session Check */}
         {!isConnected ? (
           <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
             <span className="text-5xl">🍉</span>
             <h1 className="text-2xl font-black mt-4 text-slate-100">Base Fruit Ninja</h1>
-            <p className="text-xs text-slate-400 mt-2 mb-6">Connect your Base wallet or open in Base App to start playing.</p>
-            <div className="text-xs text-blue-400 font-mono bg-blue-950/40 py-2 px-3 rounded-xl border border-blue-800/40">
-              ⚡ Connect in Base App / Farcaster
-            </div>
+            <p className="text-xs text-slate-400 mt-2 mb-6">Connect your wallet to slice fruits and climb the onchain ranks.</p>
+            <button
+              onClick={handleConnectWallet}
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-bold rounded-2xl transition-all shadow-lg shadow-blue-600/30"
+            >
+              Connect Wallet 🔵
+            </button>
           </div>
         ) : !isSessionActive ? (
           <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
