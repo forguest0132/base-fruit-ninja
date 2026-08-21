@@ -384,7 +384,28 @@ export default function Home() {
     }
   }, [gameOver, score, highScore, activeAddress]);
 
-  const handleSlice = (clientX: number, clientY: number) => {
+  // Core slice hit processor for an item
+  const processItemHit = (item: FruitItem) => {
+    if (item.sliced || !isPlayingRef.current) return;
+
+    if (item.isBomb) {
+      playSound('bomb');
+      triggerGameOver();
+    } else if (item.isStone) {
+      playSound('stone');
+      deductLife();
+    } else {
+      playSound('slice');
+      setScore((s) => s + 1);
+    }
+
+    setFruits((prev) =>
+      prev.map((f) => (f.id === item.id ? { ...f, sliced: true } : f))
+    );
+  };
+
+  // Slicing Trail & Swipe Collision
+  const handleSliceSwipe = (clientX: number, clientY: number) => {
     if (!gameAreaRef.current || !isPlayingRef.current) return;
     const rect = gameAreaRef.current.getBoundingClientRect();
     const slashX = clientX - rect.left;
@@ -392,29 +413,15 @@ export default function Home() {
 
     setTrail((prev) => [...prev.slice(-14), { x: slashX, y: slashY, id: Math.random() }]);
 
-    setFruits((prev) =>
-      prev.map((f) => {
-        if (!f.sliced) {
-          const distX = Math.abs(f.x + 20 - slashX);
-          const distY = Math.abs(f.y + 20 - slashY);
-
-          if (distX < 38 && distY < 38) {
-            if (f.isBomb) {
-              playSound('bomb');
-              triggerGameOver();
-            } else if (f.isStone) {
-              playSound('stone');
-              deductLife();
-            } else {
-              playSound('slice');
-              setScore((s) => s + 1);
-            }
-            return { ...f, sliced: true };
-          }
+    fruits.forEach((f) => {
+      if (!f.sliced) {
+        const distX = Math.abs(f.x + 24 - slashX);
+        const distY = Math.abs(f.y + 24 - slashY);
+        if (distX < 45 && distY < 45) {
+          processItemHit(f);
         }
-        return f;
-      })
-    );
+      }
+    });
   };
 
   if (!mounted) return null;
@@ -512,9 +519,9 @@ export default function Home() {
             {/* Slicing Canvas */}
             <div
               ref={gameAreaRef}
-              onMouseMove={(e) => handleSlice(e.clientX, e.clientY)}
+              onMouseMove={(e) => handleSliceSwipe(e.clientX, e.clientY)}
               onTouchMove={(e) => {
-                if (e.touches[0]) handleSlice(e.touches[0].clientX, e.touches[0].clientY);
+                if (e.touches[0]) handleSliceSwipe(e.touches[0].clientX, e.touches[0].clientY);
               }}
               className="relative w-full h-[390px] bg-gradient-to-b from-slate-950/40 to-slate-900/60 flex items-center justify-center overflow-hidden select-none cursor-crosshair touch-none"
             >
@@ -570,16 +577,18 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Items */}
+              {/* Spawned Objects with Direct Touch/Hover Handlers */}
               {fruits.map((f) => (
                 <div
                   key={f.id}
+                  onMouseEnter={() => processItemHit(f)}
+                  onTouchStart={() => processItemHit(f)}
                   style={{
                     transform: `translate(${f.x}px, ${f.y}px)`,
                     opacity: f.sliced ? 0 : 1,
                     transition: f.sliced ? 'opacity 0.15s ease-out' : 'none',
                   }}
-                  className="absolute text-4xl select-none pointer-events-none"
+                  className="absolute text-5xl select-none cursor-pointer z-20 transition-transform active:scale-125"
                 >
                   {f.emoji}
                 </div>
