@@ -33,7 +33,6 @@ export default function Home() {
   const [globalScores, setGlobalScores] = useState<LeaderboardEntry[]>(INITIAL_GLOBAL);
   const [farcasterUser, setFarcasterUser] = useState<string | null>(null);
 
-  // Notify Base & Farcaster Mini App container that UI is ready
   useEffect(() => {
     const initSdk = async () => {
       try {
@@ -43,7 +42,7 @@ export default function Home() {
         }
         await sdk.actions.ready();
       } catch (err) {
-        console.log('Not running in frame context or SDK error', err);
+        console.log('Frame SDK context loaded', err);
       }
     };
     initSdk();
@@ -113,7 +112,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#0d0b09] text-white flex flex-col items-center justify-start p-3 sm:p-6 selection:bg-amber-500 overflow-y-auto">
-      {/* Header */}
+      {/* Top Header */}
       <div className="w-full max-w-md flex justify-between items-center mb-3 px-1 pt-2">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-[#0052FF] shadow-[0_0_8px_#0052FF]" />
@@ -147,13 +146,13 @@ export default function Home() {
         )}
       </div>
 
-      {/* Gasless Badge */}
+      {/* Gasless Sponsored Badge */}
       <div className="w-full max-w-md bg-emerald-950/40 border border-emerald-800/40 rounded-xl px-3 py-1.5 mb-3 flex items-center justify-between text-[10px] font-mono text-emerald-300">
         <span>⚡ 100% Gasless Gameplay</span>
         <span className="text-emerald-400 font-bold">Base Network</span>
       </div>
 
-      {/* Mode Switcher */}
+      {/* Main Mode Switcher */}
       <div className="w-full max-w-md flex bg-[#1c1813] p-1 rounded-2xl border border-[#3d3226] mb-3 shadow-md">
         <button
           onClick={() => setCurrentView('game')}
@@ -185,14 +184,30 @@ export default function Home() {
         />
       )}
 
-      {/* Social Share */}
-      <div className="w-full max-w-md mt-3 pb-6">
+      {/* Social Feed Share & Creator Ownership Footer */}
+      <div className="w-full max-w-md mt-3 pb-6 flex flex-col items-center gap-2.5">
         <button
           onClick={shareOnBase}
           className="w-full py-3 rounded-2xl bg-[#1c1813] hover:bg-[#26201a] border border-[#3d3226] text-zinc-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
         >
           <Share2 className="w-4 h-4 text-[#0052FF]" /> Share on Base Feed
         </button>
+
+        {/* Developer Attribution */}
+        <div className="text-[11px] font-mono text-zinc-500 text-center">
+          Built on Base 🔵 by{' '}
+          <a
+            href="https://warpcast.com/0xboysun"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#0052FF] font-semibold hover:underline"
+          >
+            @0xboysun
+          </a>{' '}
+          <span className="text-[10px] text-zinc-600 block sm:inline">
+            (0x4ECd...6AEc)
+          </span>
+        </div>
       </div>
     </main>
   );
