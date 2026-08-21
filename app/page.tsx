@@ -23,17 +23,22 @@ const SESSION_ABI = [
   },
 ] as const;
 
-interface FruitItem {
+interface GameObject {
   id: number;
   x: number;
   y: number;
   vx: number;
   vy: number;
+  rotation: number;
+  vRot: number;
   emoji: string;
   isBomb: boolean;
   isStone: boolean;
   sliced: boolean;
-  missed?: boolean;
+  missed: boolean;
+  radius: number;
+  leftPiece?: { x: number; y: number; vx: number; vy: number; rot: number };
+  rightPiece?: { x: number; y: number; vx: number; vy: number; rot: number };
 }
 
 interface LeaderboardEntry {
@@ -54,18 +59,25 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
-  const [fruits, setFruits] = useState<FruitItem[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [trail, setTrail] = useState<{ x: number; y: number; id: number }[]>([]);
 
   const { data: hash, writeContract, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
-  const gameAreaRef = useRef<HTMLDivElement | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const livesRef = useRef(3);
-  const isPlayingRef = useRef(false);
+
+  // High performance game state refs (avoids React render desync)
+  const gameStateRef = useRef({
+    isPlaying: false,
+    score: 0,
+    lives: 3,
+    highScore: 0,
+    objects: [] as GameObject[],
+    trail: [] as { x: number; y: number; age: number }[],
+    lastSpawn: 0,
+    spawnInterval: 900,
+  });
 
   const activeAddress = wagmiAddress || directAddress;
   const isUserConnected = wagmiConnected || !!directAddress;
@@ -84,14 +96,7 @@ export default function Home() {
     }
   }, []);
 
-  useEffect(() => {
-    livesRef.current = lives;
-  }, [lives]);
-
-  useEffect(() => {
-    isPlayingRef.current = isPlaying;
-  }, [isPlaying]);
-
+  // Web Audio Synth
   const playSound = (type: 'slice' | 'bomb' | 'miss' | 'stone' | 'over') => {
     try {
       if (!audioCtxRef.current) {
@@ -108,15 +113,15 @@ export default function Home() {
 
       if (type === 'slice') {
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(650, now);
-        osc.frequency.exponentialRampToValueAtTime(1400, now + 0.08);
+        osc.frequency.setValueAtTime(750, now);
+        osc.frequency.exponentialRampToValueAtTime(1600, now + 0.08);
         gain.gain.setValueAtTime(0.35, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
         osc.start(now);
         osc.stop(now + 0.08);
       } else if (type === 'stone') {
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.setValueAtTime(180, now);
         osc.frequency.exponentialRampToValueAtTime(70, now + 0.18);
         gain.gain.setValueAtTime(0.5, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
@@ -124,12 +129,12 @@ export default function Home() {
         osc.stop(now + 0.18);
       } else if (type === 'bomb') {
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(180, now);
-        osc.frequency.exponentialRampToValueAtTime(30, now + 0.35);
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.4);
         gain.gain.setValueAtTime(0.6, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
         osc.start(now);
-        osc.stop(now + 0.35);
+        osc.stop(now + 0.4);
       } else if (type === 'miss') {
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(260, now);
@@ -141,11 +146,11 @@ export default function Home() {
       } else if (type === 'over') {
         osc.type = 'square';
         osc.frequency.setValueAtTime(320, now);
-        osc.frequency.exponentialRampToValueAtTime(70, now + 0.45);
+        osc.frequency.exponentialRampToValueAtTime(70, now + 0.5);
         gain.gain.setValueAtTime(0.35, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
         osc.start(now);
-        osc.stop(now + 0.45);
+        osc.stop(now + 0.5);
       }
     } catch {}
   };
@@ -166,7 +171,11 @@ export default function Home() {
     }
     if (activeAddress) {
       const saved = localStorage.getItem(`highScore_${activeAddress.toLowerCase()}`);
-      if (saved) setHighScore(parseInt(saved, 10));
+      if (saved) {
+        const hs = parseInt(saved, 10);
+        setHighScore(hs);
+        gameStateRef.current.highScore = hs;
+      }
     }
   }, [activeAddress]);
 
@@ -249,132 +258,35 @@ export default function Home() {
     setDirectAddress(null);
     setIsSessionActive(false);
     setIsPlaying(false);
-    isPlayingRef.current = false;
+    gameStateRef.current.isPlaying = false;
     disconnect();
-  };
-
-  const startGame = () => {
-    setScore(0);
-    setLives(3);
-    livesRef.current = 3;
-    setGameOver(false);
-    setIsPlaying(true);
-    isPlayingRef.current = true;
-    setFruits([]);
-    setTrail([]);
   };
 
   const triggerGameOver = () => {
     playSound('over');
+    gameStateRef.current.isPlaying = false;
+    gameStateRef.current.lives = 0;
+    setLives(0);
     setGameOver(true);
     setIsPlaying(false);
-    isPlayingRef.current = false;
-    setLives(0);
-    livesRef.current = 0;
-  };
 
-  const deductLife = () => {
-    const remaining = livesRef.current - 1;
-    livesRef.current = remaining;
-    setLives(remaining);
-    if (remaining <= 0) {
-      triggerGameOver();
-      return false;
-    }
-    return true;
-  };
-
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    const spawnInterval = setInterval(() => {
-      if (!isPlayingRef.current) return;
-      const rand = Math.random();
-      const isBomb = rand < 0.15;
-      const isStone = !isBomb && rand < 0.35;
-
-      const emojis = ['🍉', '🍎', '🍌', '🍍', '🍓', '🍊', '🍇'];
-      let emoji = emojis[Math.floor(Math.random() * emojis.length)];
-      if (isBomb) emoji = '💣';
-      if (isStone) emoji = '🪨';
-
-      const newFruit: FruitItem = {
-        id: Date.now() + Math.random(),
-        x: Math.random() * 260 + 20,
-        y: 380,
-        vx: (Math.random() - 0.5) * 3.5,
-        vy: -(Math.random() * 3.5 + 9.5),
-        emoji,
-        isBomb,
-        isStone,
-        sliced: false,
-        missed: false,
-      };
-
-      setFruits((prev) => [...prev, newFruit]);
-    }, 850);
-
-    const updatePhysics = () => {
-      if (!isPlayingRef.current) return;
-
-      setFruits((prev) => {
-        const nextFruits: FruitItem[] = [];
-
-        for (const f of prev) {
-          const nextY = f.y + f.vy;
-          const nextX = f.x + f.vx;
-          const nextVy = f.vy + 0.2;
-
-          if (nextY > 390 && !f.sliced && !f.missed) {
-            if (!f.isBomb && !f.isStone) {
-              playSound('miss');
-              const alive = deductLife();
-              if (!alive) return [];
-            }
-            f.missed = true;
-          }
-
-          if (nextY < 430) {
-            nextFruits.push({
-              ...f,
-              x: nextX,
-              y: nextY,
-              vy: nextVy,
-            });
-          }
-        }
-        return nextFruits;
-      });
-
-      if (isPlayingRef.current) {
-        animationFrameRef.current = requestAnimationFrame(updatePhysics);
-      }
-    };
-
-    animationFrameRef.current = requestAnimationFrame(updatePhysics);
-
-    return () => {
-      clearInterval(spawnInterval);
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, [isPlaying]);
-
-  useEffect(() => {
-    if (gameOver && activeAddress && score > 0) {
-      if (score > highScore) {
-        setHighScore(score);
-        localStorage.setItem(`highScore_${activeAddress.toLowerCase()}`, score.toString());
+    const finalScore = gameStateRef.current.score;
+    if (activeAddress && finalScore > 0) {
+      if (finalScore > gameStateRef.current.highScore) {
+        gameStateRef.current.highScore = finalScore;
+        setHighScore(finalScore);
+        localStorage.setItem(`highScore_${activeAddress.toLowerCase()}`, finalScore.toString());
       }
 
       setLeaderboard((prev) => {
         const existingIndex = prev.findIndex((e) => e.address.toLowerCase() === activeAddress.toLowerCase());
         let updated = [...prev];
         if (existingIndex >= 0) {
-          if (score > updated[existingIndex].score) {
-            updated[existingIndex].score = score;
+          if (finalScore > updated[existingIndex].score) {
+            updated[existingIndex].score = finalScore;
           }
         } else {
-          updated.push({ address: activeAddress, score });
+          updated.push({ address: activeAddress, score: finalScore });
         }
         updated.sort((a, b) => b.score - a.score);
         updated = updated.slice(0, 5);
@@ -382,46 +294,223 @@ export default function Home() {
         return updated;
       });
     }
-  }, [gameOver, score, highScore, activeAddress]);
-
-  // Core slice hit processor for an item
-  const processItemHit = (item: FruitItem) => {
-    if (item.sliced || !isPlayingRef.current) return;
-
-    if (item.isBomb) {
-      playSound('bomb');
-      triggerGameOver();
-    } else if (item.isStone) {
-      playSound('stone');
-      deductLife();
-    } else {
-      playSound('slice');
-      setScore((s) => s + 1);
-    }
-
-    setFruits((prev) =>
-      prev.map((f) => (f.id === item.id ? { ...f, sliced: true } : f))
-    );
   };
 
-  // Slicing Trail & Swipe Collision
-  const handleSliceSwipe = (clientX: number, clientY: number) => {
-    if (!gameAreaRef.current || !isPlayingRef.current) return;
-    const rect = gameAreaRef.current.getBoundingClientRect();
-    const slashX = clientX - rect.left;
-    const slashY = clientY - rect.top;
+  const deductLife = () => {
+    const nextLives = gameStateRef.current.lives - 1;
+    gameStateRef.current.lives = nextLives;
+    setLives(nextLives);
+    if (nextLives <= 0) {
+      triggerGameOver();
+      return false;
+    }
+    return true;
+  };
 
-    setTrail((prev) => [...prev.slice(-14), { x: slashX, y: slashY, id: Math.random() }]);
+  const startGame = () => {
+    gameStateRef.current = {
+      ...gameStateRef.current,
+      isPlaying: true,
+      score: 0,
+      lives: 3,
+      objects: [],
+      trail: [],
+      lastSpawn: Date.now(),
+    };
+    setScore(0);
+    setLives(3);
+    setGameOver(false);
+    setIsPlaying(true);
+  };
 
-    fruits.forEach((f) => {
-      if (!f.sliced) {
-        const distX = Math.abs(f.x + 24 - slashX);
-        const distY = Math.abs(f.y + 24 - slashY);
-        if (distX < 45 && distY < 45) {
-          processItemHit(f);
+  // Canvas Game Engine Loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animId: number;
+
+    const gameLoop = () => {
+      const g = gameStateRef.current;
+      const width = canvas.width;
+      const height = canvas.height;
+
+      ctx.clearRect(0, 0, width, height);
+
+      // 1. Spawning
+      if (g.isPlaying && Date.now() - g.lastSpawn > g.spawnInterval) {
+        g.lastSpawn = Date.now();
+        const rand = Math.random();
+        const isBomb = rand < 0.16;
+        const isStone = !isBomb && rand < 0.36;
+
+        const emojis = ['🍉', '🍎', '🍌', '🍍', '🍓', '🍊', '🍇'];
+        let emoji = emojis[Math.floor(Math.random() * emojis.length)];
+        if (isBomb) emoji = '💣';
+        if (isStone) emoji = '🪨';
+
+        const spawnX = Math.random() * (width - 80) + 40;
+        const vx = (Math.random() - 0.5) * 4;
+        const vy = -(Math.random() * 3 + 12);
+
+        g.objects.push({
+          id: Date.now() + Math.random(),
+          x: spawnX,
+          y: height + 20,
+          vx,
+          vy,
+          rotation: 0,
+          vRot: (Math.random() - 0.5) * 0.1,
+          emoji,
+          isBomb,
+          isStone,
+          sliced: false,
+          missed: false,
+          radius: 26,
+        });
+      }
+
+      // 2. Update & Draw Game Objects
+      for (let i = g.objects.length - 1; i >= 0; i--) {
+        const obj = g.objects[i];
+
+        if (!obj.sliced) {
+          obj.x += obj.vx;
+          obj.y += obj.vy;
+          obj.vy += 0.28; // gravity
+          obj.rotation += obj.vRot;
+
+          // Falling off bottom check
+          if (obj.y > height + 40) {
+            if (g.isPlaying && !obj.missed && !obj.isBomb && !obj.isStone) {
+              obj.missed = true;
+              playSound('miss');
+              deductLife();
+            }
+            g.objects.splice(i, 1);
+            continue;
+          }
+
+          // Draw Active Object
+          ctx.save();
+          ctx.translate(obj.x, obj.y);
+          ctx.rotate(obj.rotation);
+          ctx.font = '38px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(obj.emoji, 0, 0);
+          ctx.restore();
+        } else {
+          // Draw Sliced Pieces
+          if (obj.leftPiece && obj.rightPiece) {
+            obj.leftPiece.x += obj.leftPiece.vx;
+            obj.leftPiece.y += obj.leftPiece.vy;
+            obj.leftPiece.vy += 0.35;
+            obj.leftPiece.rot -= 0.1;
+
+            obj.rightPiece.x += obj.rightPiece.vx;
+            obj.rightPiece.y += obj.rightPiece.vy;
+            obj.rightPiece.vy += 0.35;
+            obj.rightPiece.rot += 0.1;
+
+            ctx.save();
+            ctx.translate(obj.leftPiece.x, obj.leftPiece.y);
+            ctx.rotate(obj.leftPiece.rot);
+            ctx.font = '24px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(obj.emoji, 0, 0);
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(obj.rightPiece.x, obj.rightPiece.y);
+            ctx.rotate(obj.rightPiece.rot);
+            ctx.font = '24px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(obj.emoji, 0, 0);
+            ctx.restore();
+
+            if (obj.leftPiece.y > height + 60 && obj.rightPiece.y > height + 60) {
+              g.objects.splice(i, 1);
+            }
+          } else {
+            g.objects.splice(i, 1);
+          }
         }
       }
-    });
+
+      // 3. Draw Blade Trail
+      if (g.trail.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(g.trail[0].x, g.trail[0].y);
+        for (let i = 1; i < g.trail.length; i++) {
+          ctx.lineTo(g.trail[i].x, g.trail[i].y);
+        }
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = '#0284c7';
+        ctx.shadowBlur = 10;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      // Fade out trail
+      g.trail = g.trail.filter((pt) => {
+        pt.age -= 1;
+        return pt.age > 0;
+      });
+
+      animId = requestAnimationFrame(gameLoop);
+    };
+
+    animId = requestAnimationFrame(gameLoop);
+    return () => cancelAnimationFrame(animId);
+  }, []);
+
+  // Blade Slash Handler (Direct Canvas Coordinates)
+  const handleBladeMove = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+
+    const g = gameStateRef.current;
+    g.trail.push({ x, y, age: 10 });
+
+    if (!g.isPlaying) return;
+
+    // Check hit collision against active objects
+    for (const obj of g.objects) {
+      if (!obj.sliced) {
+        const dist = Math.hypot(obj.x - x, obj.y - y);
+        if (dist < obj.radius + 15) {
+          obj.sliced = true;
+          obj.leftPiece = { x: obj.x - 8, y: obj.y, vx: -3, vy: -2, rot: 0 };
+          obj.rightPiece = { x: obj.x + 8, y: obj.y, vx: 3, vy: -2, rot: 0 };
+
+          if (obj.isBomb) {
+            playSound('bomb');
+            triggerGameOver();
+            return;
+          } else if (obj.isStone) {
+            playSound('stone');
+            deductLife();
+          } else {
+            playSound('slice');
+            g.score += 1;
+            setScore(g.score);
+          }
+        }
+      }
+    }
   };
 
   if (!mounted) return null;
@@ -463,7 +552,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Game Interface */}
+      {/* Main Screen */}
       <div className="w-full max-w-md my-auto flex flex-col items-center gap-4">
         {!isUserConnected ? (
           <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
@@ -516,38 +605,21 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Slicing Canvas */}
-            <div
-              ref={gameAreaRef}
-              onMouseMove={(e) => handleSliceSwipe(e.clientX, e.clientY)}
-              onTouchMove={(e) => {
-                if (e.touches[0]) handleSliceSwipe(e.touches[0].clientX, e.touches[0].clientY);
-              }}
-              className="relative w-full h-[390px] bg-gradient-to-b from-slate-950/40 to-slate-900/60 flex items-center justify-center overflow-hidden select-none cursor-crosshair touch-none"
-            >
-              {/* Blade Trail */}
-              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
-                {trail.map((point, index) => {
-                  if (index === 0) return null;
-                  const prev = trail[index - 1];
-                  return (
-                    <line
-                      key={point.id}
-                      x1={prev.x}
-                      y1={prev.y}
-                      x2={point.x}
-                      y2={point.y}
-                      stroke="#38bdf8"
-                      strokeWidth={Math.max(2, index * 0.8)}
-                      strokeLinecap="round"
-                      opacity={index / trail.length}
-                    />
-                  );
-                })}
-              </svg>
+            {/* Canvas Game Arena */}
+            <div className="relative w-full h-[400px] bg-gradient-to-b from-slate-950/40 to-slate-900/60 flex items-center justify-center overflow-hidden select-none">
+              <canvas
+                ref={canvasRef}
+                width={360}
+                height={400}
+                onMouseMove={(e) => handleBladeMove(e.clientX, e.clientY)}
+                onTouchMove={(e) => {
+                  if (e.touches[0]) handleBladeMove(e.touches[0].clientX, e.touches[0].clientY);
+                }}
+                className="w-full h-full cursor-crosshair touch-none select-none block"
+              />
 
               {!isPlaying && !gameOver && (
-                <div className="text-center p-6 flex flex-col items-center z-20">
+                <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center z-20">
                   <span className="text-6xl mb-3 animate-bounce">⚔️</span>
                   <h3 className="text-xl font-black text-slate-100">Ready to Slice?</h3>
                   <p className="text-xs text-slate-400 mt-1 mb-6">
@@ -576,26 +648,9 @@ export default function Home() {
                   </button>
                 </div>
               )}
-
-              {/* Spawned Objects with Direct Touch/Hover Handlers */}
-              {fruits.map((f) => (
-                <div
-                  key={f.id}
-                  onMouseEnter={() => processItemHit(f)}
-                  onTouchStart={() => processItemHit(f)}
-                  style={{
-                    transform: `translate(${f.x}px, ${f.y}px)`,
-                    opacity: f.sliced ? 0 : 1,
-                    transition: f.sliced ? 'opacity 0.15s ease-out' : 'none',
-                  }}
-                  className="absolute text-5xl select-none cursor-pointer z-20 transition-transform active:scale-125"
-                >
-                  {f.emoji}
-                </div>
-              ))}
             </div>
 
-            {/* Leaderboard Panel */}
+            {/* Leaderboard */}
             <div className="w-full bg-slate-950/60 p-4 border-t border-slate-800">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-400">🏆 Top Onchain Ninjas</span>
