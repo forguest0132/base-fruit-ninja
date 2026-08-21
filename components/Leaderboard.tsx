@@ -4,34 +4,62 @@ import React, { useState } from 'react';
 import { Calendar, Globe, Clock, Trophy, Users, UserCheck } from 'lucide-react';
 
 export interface LeaderboardEntry {
-  rank?: number;
   address: string;
   score: number;
-  timestamp?: number;
+  timestamp: number;
 }
 
 interface LeaderboardProps {
   userAddress?: string;
-  weeklyScores: LeaderboardEntry[];
-  globalScores: LeaderboardEntry[];
+  allScores: LeaderboardEntry[];
 }
 
-export default function Leaderboard({ userAddress, weeklyScores, globalScores }: LeaderboardProps) {
-  const [activeTab, setActiveTab] = useState<'weekly' | 'global'>('weekly');
-  const rawList = activeTab === 'weekly' ? weeklyScores : globalScores;
+export default function Leaderboard({ userAddress, allScores }: LeaderboardProps) {
+  const [activeTab, setActiveTab] = useState<'weekly' | 'lastWeek' | 'global'>('weekly');
 
-  const formatAddress = (addr: string) => {
-    if (!addr) return '';
-    return `${addr.slice(0, 4)}...${addr.slice(-6)}`;
-  };
+  const formatAddress = (addr: string) => (addr ? `${addr.slice(0, 4)}...${addr.slice(-6)}` : '');
 
-  // Check if current user is present, if not add with 0 pts
-  let displayList = [...rawList];
+  // Calculate Monday 00:00 UTC for current and last week
+  const now = new Date();
+  const dayOfWeek = now.getUTCDay();
+  const diffToMonday = (dayOfWeek + 6) % 7;
+  
+  const currentWeekStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffToMonday, 0, 0, 0, 0)
+  ).getTime();
+  
+  const lastWeekStart = currentWeekStart - 7 * 24 * 60 * 60 * 1000;
+
+  // 1. Current Weekly Running (All Players)
+  const getWeeklyScores = () =>
+    allScores
+      .filter((s) => s.timestamp && s.timestamp >= currentWeekStart)
+      .sort((a, b) => b.score - a.score);
+
+  // 2. Last Week (Previous Week Top 10 Only)
+  const getLastWeekScores = () =>
+    allScores
+      .filter((s) => s.timestamp && s.timestamp >= lastWeekStart && s.timestamp < currentWeekStart)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10);
+
+  // 3. Global All-Time (All Players)
+  const getGlobalScores = () => [...allScores].sort((a, b) => b.score - a.score);
+
+  const weekly = getWeeklyScores();
+  const lastWeek = getLastWeekScores();
+  const global = getGlobalScores();
+
+  const currentList = activeTab === 'weekly' ? weekly : activeTab === 'lastWeek' ? lastWeek : global;
+
+  // Check if current user is present for active tab
+  let displayList = [...currentList];
   if (userAddress && !displayList.some((item) => item.address.toLowerCase() === userAddress.toLowerCase())) {
-    displayList.push({ address: userAddress, score: 0, timestamp: Date.now() });
+    if (activeTab !== 'lastWeek') {
+      displayList.push({ address: userAddress, score: 0, timestamp: Date.now() });
+    }
   }
 
-  // Sort descending by score and compute rank
   const sortedList = displayList
     .sort((a, b) => b.score - a.score)
     .map((item, index) => ({
@@ -49,7 +77,7 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
       <div className="flex items-center justify-between mb-4 px-1">
         <div className="flex items-center gap-2">
           <Trophy className="w-5 h-5 text-amber-400" />
-          <h2 className="font-black text-base tracking-wide text-zinc-100 uppercase font-mono">
+          <h2 className="font-black text-base uppercase font-mono tracking-wide text-zinc-100">
             Leaderboard
           </h2>
         </div>
@@ -59,38 +87,53 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
         </div>
       </div>
 
-      {/* Tab Switcher */}
+      {/* Tabs: WEEKLY, LAST WEEK, GLOBAL */}
       <div className="flex bg-[#26201a] p-1 rounded-2xl border border-[#3d3226] mb-3">
         <button
           onClick={() => setActiveTab('weekly')}
-          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+          className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
             activeTab === 'weekly' ? 'bg-[#0052FF] text-white shadow-md' : 'text-zinc-400 hover:text-white'
           }`}
         >
-          <Calendar className="w-3.5 h-3.5" /> Weekly
+          Weekly
+        </button>
+
+        <button
+          onClick={() => setActiveTab('lastWeek')}
+          className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+            activeTab === 'lastWeek' ? 'bg-[#0052FF] text-white shadow-md' : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          Last Week
         </button>
 
         <button
           onClick={() => setActiveTab('global')}
-          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+          className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
             activeTab === 'global' ? 'bg-[#0052FF] text-white shadow-md' : 'text-zinc-400 hover:text-white'
           }`}
         >
-          <Globe className="w-3.5 h-3.5" /> Global (All Time)
+          Global
         </button>
       </div>
 
-      {/* Countdown Reset Notice */}
+      {/* Notice Bar */}
       <div className="flex items-center justify-between text-[10px] text-amber-300/80 bg-amber-950/30 px-3 py-1.5 rounded-xl border border-amber-900/40 mb-3 font-mono">
         <span className="flex items-center gap-1">
           <Clock className="w-3 h-3 text-amber-400" />
-          {activeTab === 'weekly' ? 'Resets Mondays 12:00 AM UTC' : 'Permanent All-Time Rankings'}
+          {activeTab === 'weekly'
+            ? 'Resets every Monday 12:00 AM UTC'
+            : activeTab === 'lastWeek'
+            ? 'Top 10 Finalists (Previous Week)'
+            : 'All-Time High Score Rankings'}
         </span>
-        <span className="font-bold text-amber-400">ACTIVE</span>
+        <span className="font-bold text-amber-400 uppercase">
+          {activeTab === 'lastWeek' ? 'Ended' : 'Active'}
+        </span>
       </div>
 
-      {/* Persistent Current User Card */}
-      {currentUserEntry && (
+      {/* Persistent Standing for Connected User */}
+      {currentUserEntry && activeTab !== 'lastWeek' && (
         <div className="mb-3 p-3 rounded-2xl bg-gradient-to-r from-[#0052FF]/25 to-transparent border border-[#0052FF]/60 flex items-center justify-between shadow-[0_0_15px_rgba(0,82,255,0.15)]">
           <div className="flex items-center gap-2.5">
             <UserCheck className="w-4 h-4 text-[#38bdf8]" />
@@ -112,45 +155,51 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
         </div>
       )}
 
-      {/* Scrollable Leaderboard List */}
+      {/* Leaderboard Entries */}
       <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-        {sortedList.map((player) => {
-          const isCurrentUser = userAddress && player.address.toLowerCase() === userAddress.toLowerCase();
+        {sortedList.length === 0 ? (
+          <div className="text-center py-8 text-xs font-mono text-zinc-500">
+            {activeTab === 'lastWeek' ? 'No scores recorded in the last week!' : 'No entries yet. Be the first!'}
+          </div>
+        ) : (
+          sortedList.map((player) => {
+            const isCurrentUser = userAddress && player.address.toLowerCase() === userAddress.toLowerCase();
 
-          let badgeColor = 'text-zinc-400';
-          if (player.rank === 1) badgeColor = 'text-amber-400 font-bold';
-          if (player.rank === 2) badgeColor = 'text-slate-300 font-bold';
-          if (player.rank === 3) badgeColor = 'text-amber-600 font-bold';
+            let badgeColor = 'text-zinc-400';
+            if (player.rank === 1) badgeColor = 'text-amber-400 font-bold';
+            if (player.rank === 2) badgeColor = 'text-slate-300 font-bold';
+            if (player.rank === 3) badgeColor = 'text-amber-600 font-bold';
 
-          return (
-            <div
-              key={`${player.address}-${player.rank}`}
-              className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
-                isCurrentUser
-                  ? 'bg-[#0052FF]/20 border-[#0052FF] shadow-[0_0_12px_rgba(0,82,255,0.25)]'
-                  : 'bg-[#221c17]/70 border-[#382d20] hover:border-[#4d3e2b]'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className={`w-6 text-center font-mono font-black text-sm ${badgeColor}`}>
-                  #{player.rank}
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-zinc-200">{formatAddress(player.address)}</span>
-                  {isCurrentUser && (
-                    <span className="text-[9px] bg-[#0052FF] text-white px-1.5 py-0.5 rounded font-sans">
-                      YOU
-                    </span>
-                  )}
+            return (
+              <div
+                key={`${player.address}-${player.rank}`}
+                className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
+                  isCurrentUser
+                    ? 'bg-[#0052FF]/20 border-[#0052FF] shadow-[0_0_12px_rgba(0,82,255,0.25)]'
+                    : 'bg-[#221c17]/70 border-[#382d20] hover:border-[#4d3e2b]'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`w-6 text-center font-mono font-black text-sm ${badgeColor}`}>
+                    #{player.rank}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-zinc-200">{formatAddress(player.address)}</span>
+                    {isCurrentUser && (
+                      <span className="text-[9px] bg-[#0052FF] text-white px-1.5 py-0.5 rounded font-sans">
+                        YOU
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="font-mono font-bold text-xs text-amber-400 bg-amber-950/50 px-2.5 py-1 rounded-lg border border-amber-900/50">
+                  {player.score} PTS
                 </div>
               </div>
-
-              <div className="font-mono font-bold text-xs text-amber-400 bg-amber-950/50 px-2.5 py-1 rounded-lg border border-amber-900/50">
-                {player.score} PTS
-              </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     </div>
   );
