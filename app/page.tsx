@@ -46,6 +46,7 @@ export default function Home() {
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
 
+  const [mounted, setMounted] = useState(false);
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [lives, setLives] = useState(3);
@@ -66,6 +67,10 @@ export default function Home() {
   const isPlayingRef = useRef(false);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     livesRef.current = lives;
   }, [lives]);
 
@@ -73,7 +78,7 @@ export default function Home() {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // Audio Synthesizer
+  // Web Audio Synthesizer
   const playSound = (type: 'slice' | 'bomb' | 'miss' | 'stone' | 'over') => {
     try {
       if (!audioCtxRef.current) {
@@ -130,7 +135,7 @@ export default function Home() {
         osc.stop(now + 0.45);
       }
     } catch {
-      // Audio fallback
+      // Audio safety
     }
   };
 
@@ -186,26 +191,27 @@ export default function Home() {
     });
   };
 
+  // Connect Handler with multi-fallback
   const handleConnectWallet = async () => {
-    if (connectors && connectors.length > 0) {
-      const targetConnector =
-        connectors.find((c) => c.id === 'injected') ||
-        connectors.find((c) => c.name.toLowerCase().includes('injected')) ||
-        connectors[0];
-
-      if (targetConnector) {
-        connect({ connector: targetConnector });
+    // 1. Try injected connector from wagmi
+    const injected = connectors.find((c) => c.id === 'injected') || connectors[0];
+    if (injected) {
+      try {
+        connect({ connector: injected });
         return;
+      } catch (e) {
+        console.warn('Wagmi connect attempt failed:', e);
       }
     }
 
+    // 2. Direct window.ethereum fallback for Rabby / Metamask
     if (typeof window !== 'undefined' && (window as unknown as { ethereum?: { request: (args: { method: string }) => Promise<unknown> } }).ethereum) {
       try {
         await (window as unknown as { ethereum: { request: (args: { method: string }) => Promise<unknown> } }).ethereum.request({
           method: 'eth_requestAccounts',
         });
       } catch (err) {
-        console.error('Wallet connection error:', err);
+        console.error('Direct window.ethereum request failed:', err);
       }
     }
   };
@@ -293,7 +299,7 @@ export default function Home() {
           const nextX = f.x + f.vx;
           const nextVy = f.vy + 0.2;
 
-          // Only missed fruits deduct life (Stone and Bomb falling down do NOT deduct lives)
+          // Only missed fruits deduct a life
           if (nextY > 390 && !f.sliced && !f.missed) {
             if (!f.isBomb && !f.isStone) {
               playSound('miss');
@@ -354,7 +360,7 @@ export default function Home() {
     }
   }, [gameOver, score, highScore, address]);
 
-  // Slice & Interaction Logic
+  // Slicing Logic
   const handleSlice = (clientX: number, clientY: number) => {
     if (!gameAreaRef.current || !isPlayingRef.current) return;
     const rect = gameAreaRef.current.getBoundingClientRect();
@@ -371,15 +377,12 @@ export default function Home() {
 
           if (distX < 38 && distY < 38) {
             if (f.isBomb) {
-              // Bomb hit -> Game Over
               playSound('bomb');
               triggerGameOver();
             } else if (f.isStone) {
-              // Stone hit -> Deduct 1 life
               playSound('stone');
               deductLife();
             } else {
-              // Fruit slice -> +1 point
               playSound('slice');
               setScore((s) => s + 1);
             }
@@ -390,6 +393,8 @@ export default function Home() {
       })
     );
   };
+
+  if (!mounted) return null;
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-between p-4 selection:bg-blue-500 selection:text-white">
@@ -490,7 +495,7 @@ export default function Home() {
               }}
               className="relative w-full h-[390px] bg-gradient-to-b from-slate-950/40 to-slate-900/60 flex items-center justify-center overflow-hidden select-none cursor-crosshair touch-none"
             >
-              {/* Slash Trail */}
+              {/* Blade Slash Trail */}
               <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
                 {trail.map((point, index) => {
                   if (index === 0) return null;
@@ -599,7 +604,7 @@ export default function Home() {
             rel="noopener noreferrer"
             className="text-slate-200 font-semibold underline hover:text-blue-400 transition"
           >
-            @0xboysun
+            0xboysun
           </a>
         </span>
         <span className="text-[10px] font-mono text-slate-600">
