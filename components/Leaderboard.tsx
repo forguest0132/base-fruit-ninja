@@ -20,9 +20,14 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
   const [activeTab, setActiveTab] = useState<'weekly' | 'global'>('weekly');
   const rawList = activeTab === 'weekly' ? weeklyScores : globalScores;
 
+  const formatAddress = (addr: string) => {
+    if (!addr) return '';
+    return `${addr.slice(0, 4)}...${addr.slice(-6)}`;
+  };
+
   // Check if current user is present, if not add with 0 pts
   let displayList = [...rawList];
-  if (userAddress && !displayList.some(item => item.address.toLowerCase() === userAddress.toLowerCase())) {
+  if (userAddress && !displayList.some((item) => item.address.toLowerCase() === userAddress.toLowerCase())) {
     displayList.push({ address: userAddress, score: 0, timestamp: Date.now() });
   }
 
@@ -35,7 +40,7 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
     }));
 
   const currentUserEntry = userAddress
-    ? sortedList.find(item => item.address.toLowerCase() === userAddress.toLowerCase())
+    ? sortedList.find((item) => item.address.toLowerCase() === userAddress.toLowerCase())
     : null;
 
   return (
@@ -62,7 +67,7 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
             activeTab === 'weekly' ? 'bg-[#0052FF] text-white shadow-md' : 'text-zinc-400 hover:text-white'
           }`}
         >
-          <Calendar className="w-3.5 h-3.5" /> Weekly Leaderboard
+          <Calendar className="w-3.5 h-3.5" /> Weekly
         </button>
 
         <button
@@ -71,21 +76,20 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
             activeTab === 'global' ? 'bg-[#0052FF] text-white shadow-md' : 'text-zinc-400 hover:text-white'
           }`}
         >
-          <Globe className="w-3.5 h-3.5" /> Global Leaderboard
+          <Globe className="w-3.5 h-3.5" /> Global (All Time)
         </button>
       </div>
 
-      {/* Weekly Countdown Notice */}
-      {activeTab === 'weekly' && (
-        <div className="flex items-center justify-between text-[10px] text-amber-300/80 bg-amber-950/30 px-3 py-1.5 rounded-xl border border-amber-900/40 mb-3 font-mono">
-          <span className="flex items-center gap-1">
-            <Clock className="w-3 h-3 text-amber-400" /> Resets every Monday 12:00 AM UTC
-          </span>
-          <span className="font-bold text-amber-400">ACTIVE</span>
-        </div>
-      )}
+      {/* Countdown Reset Notice */}
+      <div className="flex items-center justify-between text-[10px] text-amber-300/80 bg-amber-950/30 px-3 py-1.5 rounded-xl border border-amber-900/40 mb-3 font-mono">
+        <span className="flex items-center gap-1">
+          <Clock className="w-3 h-3 text-amber-400" />
+          {activeTab === 'weekly' ? 'Resets Mondays 12:00 AM UTC' : 'Permanent All-Time Rankings'}
+        </span>
+        <span className="font-bold text-amber-400">ACTIVE</span>
+      </div>
 
-      {/* Persistent Current User Card (if connected) */}
+      {/* Persistent Current User Card */}
       {currentUserEntry && (
         <div className="mb-3 p-3 rounded-2xl bg-gradient-to-r from-[#0052FF]/25 to-transparent border border-[#0052FF]/60 flex items-center justify-between shadow-[0_0_15px_rgba(0,82,255,0.15)]">
           <div className="flex items-center gap-2.5">
@@ -93,8 +97,8 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
             <div className="flex flex-col">
               <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider">Your Standing</span>
               <span className="text-xs font-mono font-bold text-white flex items-center gap-1.5">
-                {currentUserEntry.address}
-                <span className="text-[9px] bg-[#0052FF] text-white px-1.5 py-0.2 rounded font-sans">YOU</span>
+                {formatAddress(currentUserEntry.address)}
+                <span className="text-[9px] bg-[#0052FF] text-white px-1.5 py-0.5 rounded font-sans">YOU</span>
               </span>
             </div>
           </div>
@@ -109,8 +113,8 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
       )}
 
       {/* Scrollable Leaderboard List */}
-      <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-        {sortedList.map(player => {
+      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+        {sortedList.map((player) => {
           const isCurrentUser = userAddress && player.address.toLowerCase() === userAddress.toLowerCase();
 
           let badgeColor = 'text-zinc-400';
@@ -132,9 +136,9 @@ export default function Leaderboard({ userAddress, weeklyScores, globalScores }:
                   #{player.rank}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-zinc-200">{player.address}</span>
+                  <span className="text-xs font-mono text-zinc-200">{formatAddress(player.address)}</span>
                   {isCurrentUser && (
-                    <span className="text-[9px] bg-[#0052FF] text-white px-1.5 py-0.2 rounded font-sans">
+                    <span className="text-[9px] bg-[#0052FF] text-white px-1.5 py-0.5 rounded font-sans">
                       YOU
                     </span>
                   )}

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import Leaderboard, { LeaderboardEntry } from '@/components/Leaderboard';
 
 const CONTRACT_ADDRESS = '0xd807742953d3cB55334f53495B5a3b08837c342E';
 const BUILDER_WALLET = '0x4ECd53055A78bdB5DAfe9ba5154e48906FBe6AEc'.toLowerCase();
@@ -41,12 +42,6 @@ interface GameObject {
   rightPiece?: { x: number; y: number; vx: number; vy: number; rot: number };
 }
 
-interface LeaderboardEntry {
-  address: string;
-  score: number;
-  timestamp: number;
-}
-
 export default function Home() {
   const { address: wagmiAddress, isConnected: wagmiConnected } = useAccount();
   const { connect, connectors } = useConnect();
@@ -61,9 +56,8 @@ export default function Home() {
   const [gameOver, setGameOver] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
 
-  // Leaderboard States
+  // Modal State
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
-  const [leaderboardTab, setLeaderboardTab] = useState<'weekly' | 'monthly'>('weekly');
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   const { data: hash, writeContract, isPending } = useWriteContract();
@@ -165,7 +159,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const savedLb = localStorage.getItem('base_ninja_leaderboard_v2');
+    const savedLb = localStorage.getItem('base_ninja_leaderboard_global');
     if (savedLb) {
       try {
         setLeaderboard(JSON.parse(savedLb));
@@ -294,7 +288,7 @@ export default function Home() {
           updated.push({ address: activeAddress, score: finalScore, timestamp: Date.now() });
         }
         updated.sort((a, b) => b.score - a.score);
-        localStorage.setItem('base_ninja_leaderboard_v2', JSON.stringify(updated));
+        localStorage.setItem('base_ninja_leaderboard_global', JSON.stringify(updated));
         return updated;
       });
     }
@@ -327,7 +321,7 @@ export default function Home() {
     setIsPlaying(true);
   };
 
-  // Canvas Engine Hook
+  // Canvas Engine Loop
   useEffect(() => {
     if (!isSessionActive) return;
 
@@ -344,7 +338,7 @@ export default function Home() {
 
       ctx.clearRect(0, 0, width, height);
 
-      // Spawning
+      // Spawning Loop
       if (g.isPlaying && Date.now() - g.lastSpawn > g.spawnInterval) {
         g.lastSpawn = Date.now();
         const rand = Math.random();
@@ -377,7 +371,7 @@ export default function Home() {
         });
       }
 
-      // Render Objects
+      // Render Game Objects
       for (let i = g.objects.length - 1; i >= 0; i--) {
         const obj = g.objects[i];
 
@@ -512,33 +506,19 @@ export default function Home() {
     }
   };
 
-  // Fixed Calendar UTC Reset: Weekly (Monday 00:00 UTC) & Monthly (1st of month 00:00 UTC)
-  const getFilteredLeaderboard = () => {
+  // Weekly Leaderboard (Monday 12:00 AM UTC reset)
+  const getWeeklyLeaderboard = () => {
     const now = new Date();
+    const dayOfWeek = now.getUTCDay();
+    const diffToMonday = (dayOfWeek + 6) % 7;
+    const startOfWeek = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() - diffToMonday,
+      0, 0, 0, 0
+    )).getTime();
 
-    if (leaderboardTab === 'weekly') {
-      // Calculate start of current week: Monday 12:00 AM UTC (00:00:00.000 UTC)
-      const dayOfWeek = now.getUTCDay(); // 0 is Sunday, 1 is Monday, ... 6 is Saturday
-      const diffToMonday = (dayOfWeek + 6) % 7;
-      const startOfWeek = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate() - diffToMonday,
-        0, 0, 0, 0
-      )).getTime();
-
-      return leaderboard.filter((item) => item.timestamp && item.timestamp >= startOfWeek);
-    } else {
-      // Calculate start of current month: 1st day 12:00 AM UTC (00:00:00.000 UTC)
-      const startOfMonth = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        1,
-        0, 0, 0, 0
-      )).getTime();
-
-      return leaderboard.filter((item) => item.timestamp && item.timestamp >= startOfMonth);
-    }
+    return leaderboard.filter((item) => item.timestamp && item.timestamp >= startOfWeek);
   };
 
   if (!mounted) return null;
@@ -588,7 +568,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Game Card */}
+      {/* Main Game Interface */}
       <div className="w-full max-w-md my-auto flex flex-col items-center gap-4">
         {!isUserConnected ? (
           <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
@@ -689,87 +669,21 @@ export default function Home() {
         )}
       </div>
 
-      {/* Leaderboard Modal */}
+      {/* Leaderboard Modal Integration */}
       {isLeaderboardOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🏆</span>
-                <div>
-                  <h3 className="text-lg font-black text-slate-100">Leaderboard</h3>
-                  <p className="text-[10px] text-slate-400">
-                    {leaderboardTab === 'weekly' ? 'Resets Mondays at 12:00 AM UTC' : 'Resets 1st of every month at 12:00 AM UTC'}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsLeaderboardOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold transition cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Weekly / Monthly Switch Tabs */}
-            <div className="grid grid-cols-2 gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800/80 mb-4">
-              <button
-                onClick={() => setLeaderboardTab('weekly')}
-                className={`py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
-                  leaderboardTab === 'weekly'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Weekly
-              </button>
-              <button
-                onClick={() => setLeaderboardTab('monthly')}
-                className={`py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
-                  leaderboardTab === 'monthly'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Monthly
-              </button>
-            </div>
-
-            {/* Rank List */}
-            <div className="flex flex-col gap-2 max-h-60 overflow-y-auto">
-              {getFilteredLeaderboard().length === 0 ? (
-                <div className="text-center py-8 text-xs text-slate-500">
-                  No {leaderboardTab} scores recorded in this period!
-                </div>
-              ) : (
-                getFilteredLeaderboard().map((entry, idx) => (
-                  <div
-                    key={idx}
-                    className="flex justify-between items-center bg-slate-950/50 px-3.5 py-2.5 rounded-xl border border-slate-800/60 text-xs font-mono"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className={`font-black text-sm ${
-                          idx === 0
-                            ? 'text-amber-400'
-                            : idx === 1
-                            ? 'text-slate-300'
-                            : idx === 2
-                            ? 'text-amber-600'
-                            : 'text-slate-600'
-                        }`}
-                      >
-                        #{idx + 1}
-                      </span>
-                      <span className="text-slate-300 font-semibold">{formatAddress(entry.address)}</span>
-                    </div>
-                    <span className="font-bold text-blue-400 bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-800/30">
-                      {entry.score} pts
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+          <div className="relative w-full max-w-md">
+            <button
+              onClick={() => setIsLeaderboardOpen(false)}
+              className="absolute top-4 right-4 z-50 w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold transition cursor-pointer"
+            >
+              ✕
+            </button>
+            <Leaderboard
+              userAddress={activeAddress || undefined}
+              weeklyScores={getWeeklyLeaderboard()}
+              globalScores={leaderboard}
+            />
           </div>
         </div>
       )}
