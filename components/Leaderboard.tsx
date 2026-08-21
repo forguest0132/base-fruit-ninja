@@ -21,10 +21,8 @@ export default function Leaderboard({ userAddress, allScores }: LeaderboardProps
     return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
   };
 
-  // ৭ দিনের ফিল্টার (Weekly Filter)
   const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
-  // Tab অনুযায়ী ফিল্টার ও সর্টিং
   const filteredList = (tab === 'weekly'
     ? allScores.filter((item) => item.timestamp >= oneWeekAgo)
     : allScores
@@ -37,7 +35,6 @@ export default function Leaderboard({ userAddress, allScores }: LeaderboardProps
           <span>🏆</span> Leaderboard
         </h3>
 
-        {/* Weekly vs All-Time Tabs */}
         <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
           <button
             onClick={() => setTab('weekly')}
@@ -58,17 +55,11 @@ export default function Leaderboard({ userAddress, allScores }: LeaderboardProps
         </div>
       </div>
 
-      {/* Rewards Notice */}
-      <div className="mb-4 p-2.5 bg-blue-950/40 border border-blue-500/20 rounded-xl flex items-center justify-between text-xs">
-        <span className="text-blue-300 font-medium">Weekly Prize Pool:</span>
-        <span className="font-black text-amber-300 font-mono">$6 USDC Rewards</span>
-      </div>
-
       {/* List */}
-      <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+      <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
         {filteredList.length === 0 ? (
           <div className="text-center py-8 text-xs text-slate-500 font-medium">
-            No scores recorded yet this week. Be the first! 🍉
+            No scores recorded yet. Be the first! 🍉
           </div>
         ) : (
           filteredList.map((entry, index) => {
