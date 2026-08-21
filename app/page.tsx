@@ -42,10 +42,11 @@ interface LeaderboardEntry {
 }
 
 export default function Home() {
-  const { address, isConnected } = useAccount();
+  const { address: wagmiAddress, isConnected: wagmiConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
 
+  const [directAddress, setDirectAddress] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
@@ -66,8 +67,21 @@ export default function Home() {
   const livesRef = useRef(3);
   const isPlayingRef = useRef(false);
 
+  const activeAddress = wagmiAddress || directAddress;
+  const isUserConnected = wagmiConnected || !!directAddress;
+
   useEffect(() => {
     setMounted(true);
+    if (typeof window !== 'undefined' && (window as any).ethereum) {
+      (window as any).ethereum
+        .request({ method: 'eth_accounts' })
+        .then((accounts: string[]) => {
+          if (accounts && accounts[0]) {
+            setDirectAddress(accounts[0]);
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -78,11 +92,10 @@ export default function Home() {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // Web Audio Synthesizer
   const playSound = (type: 'slice' | 'bomb' | 'miss' | 'stone' | 'over') => {
     try {
       if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       const ctx = audioCtxRef.current;
       if (ctx.state === 'suspended') ctx.resume();
@@ -134,12 +147,10 @@ export default function Home() {
         osc.start(now);
         osc.stop(now + 0.45);
       }
-    } catch {
-      // Audio safety
-    }
+    } catch {}
   };
 
-  const formatAddress = (addr: string | undefined) => {
+  const formatAddress = (addr: string | null | undefined) => {
     if (!addr) return '';
     return `${addr.slice(0, 4)}...${addr.slice(-6)}`;
   };
@@ -153,73 +164,89 @@ export default function Home() {
         setLeaderboard([]);
       }
     }
-    if (address) {
-      const saved = localStorage.getItem(`highScore_${address.toLowerCase()}`);
+    if (activeAddress) {
+      const saved = localStorage.getItem(`highScore_${activeAddress.toLowerCase()}`);
       if (saved) setHighScore(parseInt(saved, 10));
     }
-  }, [address]);
+  }, [activeAddress]);
 
   useEffect(() => {
-    if (!isConnected || !address) {
+    if (!isUserConnected || !activeAddress) {
       setIsSessionActive(false);
       return;
     }
-    if (address.toLowerCase() === BUILDER_WALLET) {
+    if (activeAddress.toLowerCase() === BUILDER_WALLET) {
       setIsSessionActive(true);
       return;
     }
-    const savedSession = sessionStorage.getItem(`session_${address.toLowerCase()}`);
+    const savedSession = sessionStorage.getItem(`session_${activeAddress.toLowerCase()}`);
     setIsSessionActive(savedSession === 'active');
-  }, [address, isConnected]);
+  }, [activeAddress, isUserConnected]);
 
   useEffect(() => {
-    if (isConfirmed && address) {
-      sessionStorage.setItem(`session_${address.toLowerCase()}`, 'active');
+    if (isConfirmed && activeAddress) {
+      sessionStorage.setItem(`session_${activeAddress.toLowerCase()}`, 'active');
       setIsSessionActive(true);
     }
-  }, [isConfirmed, address]);
+  }, [isConfirmed, activeAddress]);
 
-  const handleStartSession = () => {
-    if (address?.toLowerCase() === BUILDER_WALLET) {
+  const handleStartSession = async () => {
+    if (activeAddress?.toLowerCase() === BUILDER_WALLET) {
       setIsSessionActive(true);
       return;
     }
-    writeContract({
-      address: CONTRACT_ADDRESS,
-      abi: SESSION_ABI,
-      functionName: 'startSession',
-    });
-  };
 
-  // Connect Handler with multi-fallback
-  const handleConnectWallet = async () => {
-    // 1. Try injected connector from wagmi
-    const injected = connectors.find((c) => c.id === 'injected') || connectors[0];
-    if (injected) {
+    if (wagmiConnected) {
+      writeContract({
+        address: CONTRACT_ADDRESS,
+        abi: SESSION_ABI,
+        functionName: 'startSession',
+      });
+    } else if (typeof window !== 'undefined' && (window as any).ethereum) {
       try {
-        connect({ connector: injected });
-        return;
-      } catch (e) {
-        console.warn('Wagmi connect attempt failed:', e);
+        await (window as any).ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [
+            {
+              from: activeAddress,
+              to: CONTRACT_ADDRESS,
+              data: '0x43ea0a8e',
+            },
+          ],
+        });
+        if (activeAddress) {
+          sessionStorage.setItem(`session_${activeAddress.toLowerCase()}`, 'active');
+          setIsSessionActive(true);
+        }
+      } catch (err) {
+        console.error(err);
       }
     }
+  };
 
-    // 2. Direct window.ethereum fallback for Rabby / Metamask
-    if (typeof window !== 'undefined' && (window as unknown as { ethereum?: { request: (args: { method: string }) => Promise<unknown> } }).ethereum) {
-      try {
-        await (window as unknown as { ethereum: { request: (args: { method: string }) => Promise<unknown> } }).ethereum.request({
+  const handleConnectWallet = async () => {
+    try {
+      if (typeof window !== 'undefined' && (window as any).ethereum) {
+        const accounts = await (window as any).ethereum.request({
           method: 'eth_requestAccounts',
         });
-      } catch (err) {
-        console.error('Direct window.ethereum request failed:', err);
+        if (accounts && accounts[0]) {
+          setDirectAddress(accounts[0]);
+        }
+      } else if (connectors && connectors.length > 0) {
+        const c = connectors[0];
+        connect({ connector: c });
       }
+    } catch (err) {
+      console.error('Wallet connection failed:', err);
     }
   };
 
   const handleDisconnect = () => {
-    if (address) {
-      sessionStorage.removeItem(`session_${address.toLowerCase()}`);
+    if (activeAddress) {
+      sessionStorage.removeItem(`session_${activeAddress.toLowerCase()}`);
     }
+    setDirectAddress(null);
     setIsSessionActive(false);
     setIsPlaying(false);
     isPlayingRef.current = false;
@@ -257,7 +284,6 @@ export default function Home() {
     return true;
   };
 
-  // Game Loop
   useEffect(() => {
     if (!isPlaying) return;
 
@@ -299,7 +325,6 @@ export default function Home() {
           const nextX = f.x + f.vx;
           const nextVy = f.vy + 0.2;
 
-          // Only missed fruits deduct a life
           if (nextY > 390 && !f.sliced && !f.missed) {
             if (!f.isBomb && !f.isStone) {
               playSound('miss');
@@ -334,23 +359,22 @@ export default function Home() {
     };
   }, [isPlaying]);
 
-  // Update Leaderboard on Game Over
   useEffect(() => {
-    if (gameOver && address && score > 0) {
+    if (gameOver && activeAddress && score > 0) {
       if (score > highScore) {
         setHighScore(score);
-        localStorage.setItem(`highScore_${address.toLowerCase()}`, score.toString());
+        localStorage.setItem(`highScore_${activeAddress.toLowerCase()}`, score.toString());
       }
 
       setLeaderboard((prev) => {
-        const existingIndex = prev.findIndex((e) => e.address.toLowerCase() === address.toLowerCase());
+        const existingIndex = prev.findIndex((e) => e.address.toLowerCase() === activeAddress.toLowerCase());
         let updated = [...prev];
         if (existingIndex >= 0) {
           if (score > updated[existingIndex].score) {
             updated[existingIndex].score = score;
           }
         } else {
-          updated.push({ address, score });
+          updated.push({ address: activeAddress, score });
         }
         updated.sort((a, b) => b.score - a.score);
         updated = updated.slice(0, 5);
@@ -358,9 +382,8 @@ export default function Home() {
         return updated;
       });
     }
-  }, [gameOver, score, highScore, address]);
+  }, [gameOver, score, highScore, activeAddress]);
 
-  // Slicing Logic
   const handleSlice = (clientX: number, clientY: number) => {
     if (!gameAreaRef.current || !isPlayingRef.current) return;
     const rect = gameAreaRef.current.getBoundingClientRect();
@@ -405,12 +428,12 @@ export default function Home() {
           <span className="font-black text-sm tracking-wide text-slate-200">BASE NINJA</span>
         </div>
         <div>
-          {isConnected && address ? (
+          {isUserConnected && activeAddress ? (
             <div className="flex items-center gap-2">
               <span className="text-xs bg-slate-800 text-blue-400 font-mono px-2.5 py-1 rounded-full border border-blue-500/30">
-                {formatAddress(address)}
+                {formatAddress(activeAddress)}
               </span>
-              {address.toLowerCase() === BUILDER_WALLET && (
+              {activeAddress.toLowerCase() === BUILDER_WALLET && (
                 <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.5 rounded border border-amber-500/40">
                   BUILDER
                 </span>
@@ -435,7 +458,7 @@ export default function Home() {
 
       {/* Main Game Interface */}
       <div className="w-full max-w-md my-auto flex flex-col items-center gap-4">
-        {!isConnected ? (
+        {!isUserConnected ? (
           <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
             <span className="text-5xl">🍉</span>
             <h1 className="text-2xl font-black mt-4 text-slate-100">Base Fruit Ninja</h1>
@@ -464,7 +487,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="w-full relative bg-slate-900/90 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col items-center">
-            {/* Top Score Bar */}
+            {/* Score Bar */}
             <div className="w-full flex justify-between items-center p-4 bg-slate-950/40 border-b border-slate-800/60">
               <div className="flex flex-col">
                 <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Score</span>
@@ -495,7 +518,7 @@ export default function Home() {
               }}
               className="relative w-full h-[390px] bg-gradient-to-b from-slate-950/40 to-slate-900/60 flex items-center justify-center overflow-hidden select-none cursor-crosshair touch-none"
             >
-              {/* Blade Slash Trail */}
+              {/* Blade Trail */}
               <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
                 {trail.map((point, index) => {
                   if (index === 0) return null;
