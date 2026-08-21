@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Trophy, Users, UserCheck, Clock } from 'lucide-react';
 
 export interface LeaderboardEntry {
   address: string;
@@ -14,85 +15,200 @@ interface LeaderboardProps {
 }
 
 export default function Leaderboard({ userAddress, allScores }: LeaderboardProps) {
-  const [tab, setTab] = useState<'weekly' | 'allTime'>('weekly');
+  const [activeTab, setActiveTab] = useState<'weekly' | 'lastWeek' | 'global'>('weekly');
 
-  const formatAddress = (addr: string) => {
-    if (!addr) return '';
-    return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
+  const formatAddress = (addr: string) => (addr ? `${addr.slice(0, 4)}...${addr.slice(-6)}` : '');
+
+  // Monday 00:00 UTC calculation
+  const now = new Date();
+  const dayOfWeek = now.getUTCDay();
+  const diffToMonday = (dayOfWeek + 6) % 7;
+
+  const currentWeekStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffToMonday, 0, 0, 0, 0)
+  ).getTime();
+
+  const lastWeekStart = currentWeekStart - 7 * 24 * 60 * 60 * 1000;
+
+  // Helper to deduplicate: keep player's single highest score per filter range
+  const deduplicateTopScores = (entries: LeaderboardEntry[]) => {
+    const map = new Map<string, LeaderboardEntry>();
+    entries.forEach((entry) => {
+      const key = entry.address.toLowerCase();
+      if (!map.has(key) || map.get(key)!.score < entry.score) {
+        map.set(key, entry);
+      }
+    });
+    return Array.from(map.values());
   };
 
-  const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  // 1. Weekly Running
+  const getWeeklyScores = () =>
+    deduplicateTopScores(
+      allScores.filter((s) => s.timestamp && s.timestamp >= currentWeekStart)
+    ).sort((a, b) => b.score - a.score);
 
-  const filteredList = (tab === 'weekly'
-    ? allScores.filter((item) => item.timestamp >= oneWeekAgo)
-    : allScores
-  ).sort((a, b) => b.score - a.score);
+  // 2. Last Week (Previous Week Top 10)
+  const getLastWeekScores = () =>
+    deduplicateTopScores(
+      allScores.filter((s) => s.timestamp && s.timestamp >= lastWeekStart && s.timestamp < currentWeekStart)
+    )
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10);
+
+  // 3. Global All-Time
+  const getGlobalScores = () =>
+    deduplicateTopScores(allScores).sort((a, b) => b.score - a.score);
+
+  const weekly = getWeeklyScores();
+  const lastWeek = getLastWeekScores();
+  const global = getGlobalScores();
+
+  const currentList = activeTab === 'weekly' ? weekly : activeTab === 'lastWeek' ? lastWeek : global;
+
+  let displayList = [...currentList];
+  if (userAddress && !displayList.some((item) => item.address.toLowerCase() === userAddress.toLowerCase())) {
+    if (activeTab !== 'lastWeek') {
+      displayList.push({ address: userAddress, score: 0, timestamp: Date.now() });
+    }
+  }
+
+  const sortedList = displayList
+    .sort((a, b) => b.score - a.score)
+    .map((item, index) => ({
+      ...item,
+      rank: index + 1,
+    }));
+
+  const currentUserEntry = userAddress
+    ? sortedList.find((item) => item.address.toLowerCase() === userAddress.toLowerCase())
+    : null;
 
   return (
-    <div className="w-full max-w-md bg-slate-900/95 border border-slate-800 rounded-3xl p-5 shadow-2xl backdrop-blur">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-black text-lg text-slate-100 flex items-center gap-2">
-          <span>🏆</span> Leaderboard
-        </h3>
-
-        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-          <button
-            onClick={() => setTab('weekly')}
-            className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
-              tab === 'weekly' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Weekly
-          </button>
-          <button
-            onClick={() => setTab('allTime')}
-            className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
-              tab === 'allTime' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            All-Time
-          </button>
+    <div className="w-full max-w-md bg-[#181512]/95 backdrop-blur-md rounded-[28px] p-4 sm:p-5 border border-[#3d3226] shadow-2xl text-white my-2">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4 px-1">
+        <div className="flex items-center gap-2">
+          <Trophy className="w-5 h-5 text-amber-400" />
+          <h2 className="font-black text-base uppercase font-mono tracking-wide text-zinc-100">
+            Leaderboard
+          </h2>
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] font-mono bg-[#2a2219] text-amber-400 border border-amber-900/50 px-2.5 py-0.5 rounded-full">
+          <Users className="w-3 h-3" />
+          <span>{sortedList.length} Players</span>
         </div>
       </div>
 
-      {/* List */}
+      {/* Tabs */}
+      <div className="flex bg-[#26201a] p-1 rounded-2xl border border-[#3d3226] mb-3">
+        <button
+          onClick={() => setActiveTab('weekly')}
+          className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+            activeTab === 'weekly' ? 'bg-[#0052FF] text-white shadow-md' : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          Weekly
+        </button>
+
+        <button
+          onClick={() => setActiveTab('lastWeek')}
+          className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+            activeTab === 'lastWeek' ? 'bg-[#0052FF] text-white shadow-md' : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          Last Week
+        </button>
+
+        <button
+          onClick={() => setActiveTab('global')}
+          className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+            activeTab === 'global' ? 'bg-[#0052FF] text-white shadow-md' : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          Global
+        </button>
+      </div>
+
+      {/* Notice Bar */}
+      <div className="flex items-center justify-between text-[10px] text-amber-300/80 bg-amber-950/30 px-3 py-1.5 rounded-xl border border-amber-900/40 mb-3 font-mono">
+        <span className="flex items-center gap-1">
+          <Clock className="w-3 h-3 text-amber-400" />
+          {activeTab === 'weekly'
+            ? 'Resets every Monday 12:00 AM UTC'
+            : activeTab === 'lastWeek'
+            ? 'Top 10 Finalists (Previous Week)'
+            : 'All-Time High Score Rankings'}
+        </span>
+        <span className="font-bold text-amber-400 uppercase">
+          {activeTab === 'lastWeek' ? 'Ended' : 'Active'}
+        </span>
+      </div>
+
+      {/* User Standing Card */}
+      {currentUserEntry && activeTab !== 'lastWeek' && (
+        <div className="mb-3 p-3 rounded-2xl bg-gradient-to-r from-[#0052FF]/25 to-transparent border border-[#0052FF]/60 flex items-center justify-between shadow-[0_0_15px_rgba(0,82,255,0.15)]">
+          <div className="flex items-center gap-2.5">
+            <UserCheck className="w-4 h-4 text-[#38bdf8]" />
+            <div className="flex flex-col">
+              <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider">Your Standing</span>
+              <span className="text-xs font-mono font-bold text-white flex items-center gap-1.5">
+                {formatAddress(currentUserEntry.address)}
+                <span className="text-[9px] bg-[#0052FF] text-white px-1.5 py-0.5 rounded font-sans">YOU</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 font-mono">
+            <span className="text-xs text-zinc-400">#{currentUserEntry.rank}</span>
+            <span className="font-bold text-xs text-amber-400 bg-amber-950/70 px-2 py-1 rounded-lg border border-amber-900/60">
+              {currentUserEntry.score} PTS
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Scrollable Entry List */}
       <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
-        {filteredList.length === 0 ? (
-          <div className="text-center py-8 text-xs text-slate-500 font-medium">
-            No scores recorded yet. Be the first! 🍉
+        {sortedList.length === 0 ? (
+          <div className="text-center py-8 text-xs font-mono text-zinc-500">
+            {activeTab === 'lastWeek' ? 'No scores recorded in the last week!' : 'No entries yet. Be the first!'}
           </div>
         ) : (
-          filteredList.map((entry, index) => {
-            const isUser = userAddress && entry.address.toLowerCase() === userAddress.toLowerCase();
+          sortedList.map((player) => {
+            const isCurrentUser = userAddress && player.address.toLowerCase() === userAddress.toLowerCase();
+
+            let badgeColor = 'text-zinc-400';
+            if (player.rank === 1) badgeColor = 'text-amber-400 font-bold';
+            if (player.rank === 2) badgeColor = 'text-slate-300 font-bold';
+            if (player.rank === 3) badgeColor = 'text-amber-600 font-bold';
+
             return (
               <div
-                key={`${entry.address}-${index}`}
-                className={`flex items-center justify-between p-2.5 rounded-xl border transition ${
-                  isUser
-                    ? 'bg-blue-600/10 border-blue-500/40 text-blue-200'
-                    : 'bg-slate-950/50 border-slate-800/80 text-slate-300'
+                key={`${player.address}-${player.rank}`}
+                className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
+                  isCurrentUser
+                    ? 'bg-[#0052FF]/20 border-[#0052FF] shadow-[0_0_12px_rgba(0,82,255,0.25)]'
+                    : 'bg-[#221c17]/70 border-[#382d20] hover:border-[#4d3e2b]'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <span
-                    className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs ${
-                      index === 0
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        : index === 1
-                        ? 'bg-slate-400/20 text-slate-200 border border-slate-400/30'
-                        : index === 2
-                        ? 'bg-amber-700/20 text-amber-400 border border-amber-700/30'
-                        : 'text-slate-500 font-mono'
-                    }`}
-                  >
-                    {index + 1}
+                  <span className={`w-6 text-center font-mono font-black text-sm ${badgeColor}`}>
+                    #{player.rank}
                   </span>
-                  <span className="font-mono text-xs font-semibold">
-                    {formatAddress(entry.address)}
-                    {isUser && <span className="ml-1.5 text-[10px] text-blue-400 font-sans font-bold">(You)</span>}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-zinc-200">{formatAddress(player.address)}</span>
+                    {isCurrentUser && (
+                      <span className="text-[9px] bg-[#0052FF] text-white px-1.5 py-0.5 rounded font-sans">
+                        YOU
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <span className="font-mono font-black text-sm text-slate-100">{entry.score} pts</span>
+
+                <div className="font-mono font-bold text-xs text-amber-400 bg-amber-950/50 px-2.5 py-1 rounded-lg border border-amber-900/50">
+                  {player.score} PTS
+                </div>
               </div>
             );
           })

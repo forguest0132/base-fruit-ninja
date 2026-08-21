@@ -57,6 +57,7 @@ export default function Home() {
   const [gameOver, setGameOver] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
 
+  // Global Cloud Leaderboard
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
@@ -80,6 +81,7 @@ export default function Home() {
   const activeAddress = wagmiAddress || directAddress;
   const isUserConnected = wagmiConnected || !!directAddress;
 
+  // Supabase থেকে সকল স্কোর ও টাইমস্ট্যাম্প ফেচ করা
   const fetchGlobalLeaderboard = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -93,28 +95,20 @@ export default function Home() {
       }
 
       if (data) {
-        const userBestMap = new Map<string, { address: string; score: number; timestamp: number }>();
+        const rawEntries: LeaderboardEntry[] = data.map((item: any) => ({
+          address: item.address,
+          score: Number(item.score),
+          timestamp: new Date(item.created_at).getTime(),
+        }));
 
-        data.forEach((item: any) => {
-          const addrKey = item.address.toLowerCase();
-          const timestamp = new Date(item.created_at).getTime();
-          if (!userBestMap.has(addrKey) || userBestMap.get(addrKey)!.score < item.score) {
-            userBestMap.set(addrKey, {
-              address: item.address,
-              score: item.score,
-              timestamp,
-            });
-          }
-        });
-
-        const formatted = Array.from(userBestMap.values()).sort((a, b) => b.score - a.score);
-        setLeaderboard(formatted);
+        setLeaderboard(rawEntries);
 
         if (activeAddress) {
-          const userEntry = formatted.find((p) => p.address.toLowerCase() === activeAddress.toLowerCase());
-          if (userEntry) {
-            setHighScore(userEntry.score);
-            gameStateRef.current.highScore = userEntry.score;
+          const userScores = rawEntries.filter((p) => p.address.toLowerCase() === activeAddress.toLowerCase());
+          if (userScores.length > 0) {
+            const best = Math.max(...userScores.map((u) => u.score));
+            setHighScore(best);
+            gameStateRef.current.highScore = best;
           }
         }
       }
@@ -306,6 +300,7 @@ export default function Home() {
         setHighScore(finalScore);
       }
 
+      // Supabase-এ স্কোর পুশ
       try {
         await supabase.from('leaderboards').insert([
           {
