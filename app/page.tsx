@@ -73,7 +73,7 @@ export default function Home() {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // Audio synthesizer
+  // Audio Synthesizer
   const playSound = (type: 'slice' | 'bomb' | 'miss' | 'stone' | 'over') => {
     try {
       if (!audioCtxRef.current) {
@@ -90,25 +90,25 @@ export default function Home() {
 
       if (type === 'slice') {
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(700, now);
-        osc.frequency.exponentialRampToValueAtTime(1300, now + 0.07);
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.07);
+        osc.frequency.setValueAtTime(650, now);
+        osc.frequency.exponentialRampToValueAtTime(1400, now + 0.08);
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
         osc.start(now);
-        osc.stop(now + 0.07);
+        osc.stop(now + 0.08);
       } else if (type === 'stone') {
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(150, now);
-        osc.frequency.exponentialRampToValueAtTime(80, now + 0.15);
-        gain.gain.setValueAtTime(0.4, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.exponentialRampToValueAtTime(70, now + 0.18);
+        gain.gain.setValueAtTime(0.5, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
         osc.start(now);
-        osc.stop(now + 0.15);
+        osc.stop(now + 0.18);
       } else if (type === 'bomb') {
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.setValueAtTime(180, now);
         osc.frequency.exponentialRampToValueAtTime(30, now + 0.35);
-        gain.gain.setValueAtTime(0.5, now);
+        gain.gain.setValueAtTime(0.6, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
         osc.start(now);
         osc.stop(now + 0.35);
@@ -122,15 +122,15 @@ export default function Home() {
         osc.stop(now + 0.12);
       } else if (type === 'over') {
         osc.type = 'square';
-        osc.frequency.setValueAtTime(300, now);
-        osc.frequency.exponentialRampToValueAtTime(80, now + 0.4);
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        osc.frequency.setValueAtTime(320, now);
+        osc.frequency.exponentialRampToValueAtTime(70, now + 0.45);
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
         osc.start(now);
-        osc.stop(now + 0.4);
+        osc.stop(now + 0.45);
       }
     } catch {
-      // Audio safety
+      // Audio fallback
     }
   };
 
@@ -139,7 +139,6 @@ export default function Home() {
     return `${addr.slice(0, 4)}...${addr.slice(-6)}`;
   };
 
-  // Load Leaderboard & High Score
   useEffect(() => {
     const savedLb = localStorage.getItem('base_ninja_leaderboard');
     if (savedLb) {
@@ -155,7 +154,6 @@ export default function Home() {
     }
   }, [address]);
 
-  // Whitelist check
   useEffect(() => {
     if (!isConnected || !address) {
       setIsSessionActive(false);
@@ -169,7 +167,6 @@ export default function Home() {
     setIsSessionActive(savedSession === 'active');
   }, [address, isConnected]);
 
-  // Transaction confirmed
   useEffect(() => {
     if (isConfirmed && address) {
       sessionStorage.setItem(`session_${address.toLowerCase()}`, 'active');
@@ -189,7 +186,6 @@ export default function Home() {
     });
   };
 
-  // Reliable Multi-connector Wallet Connect
   const handleConnectWallet = async () => {
     if (connectors && connectors.length > 0) {
       const targetConnector =
@@ -203,7 +199,6 @@ export default function Home() {
       }
     }
 
-    // Direct Browser Wallet Fallback
     if (typeof window !== 'undefined' && (window as unknown as { ethereum?: { request: (args: { method: string }) => Promise<unknown> } }).ethereum) {
       try {
         await (window as unknown as { ethereum: { request: (args: { method: string }) => Promise<unknown> } }).ethereum.request({
@@ -221,6 +216,7 @@ export default function Home() {
     }
     setIsSessionActive(false);
     setIsPlaying(false);
+    isPlayingRef.current = false;
     disconnect();
   };
 
@@ -240,6 +236,8 @@ export default function Home() {
     setGameOver(true);
     setIsPlaying(false);
     isPlayingRef.current = false;
+    setLives(0);
+    livesRef.current = 0;
   };
 
   const deductLife = () => {
@@ -258,9 +256,10 @@ export default function Home() {
     if (!isPlaying) return;
 
     const spawnInterval = setInterval(() => {
+      if (!isPlayingRef.current) return;
       const rand = Math.random();
       const isBomb = rand < 0.15;
-      const isStone = !isBomb && rand < 0.32;
+      const isStone = !isBomb && rand < 0.35;
 
       const emojis = ['🍉', '🍎', '🍌', '🍍', '🍓', '🍊', '🍇'];
       let emoji = emojis[Math.floor(Math.random() * emojis.length)];
@@ -270,7 +269,7 @@ export default function Home() {
       const newFruit: FruitItem = {
         id: Date.now() + Math.random(),
         x: Math.random() * 260 + 20,
-        y: 420,
+        y: 380,
         vx: (Math.random() - 0.5) * 3.5,
         vy: -(Math.random() * 3.5 + 9.5),
         emoji,
@@ -279,10 +278,13 @@ export default function Home() {
         sliced: false,
         missed: false,
       };
+
       setFruits((prev) => [...prev, newFruit]);
     }, 850);
 
     const updatePhysics = () => {
+      if (!isPlayingRef.current) return;
+
       setFruits((prev) => {
         const nextFruits: FruitItem[] = [];
 
@@ -291,7 +293,8 @@ export default function Home() {
           const nextX = f.x + f.vx;
           const nextVy = f.vy + 0.2;
 
-          if (nextY > 430 && !f.sliced && !f.missed) {
+          // Only missed fruits deduct life (Stone and Bomb falling down do NOT deduct lives)
+          if (nextY > 390 && !f.sliced && !f.missed) {
             if (!f.isBomb && !f.isStone) {
               playSound('miss');
               const alive = deductLife();
@@ -300,7 +303,7 @@ export default function Home() {
             f.missed = true;
           }
 
-          if (nextY < 460) {
+          if (nextY < 430) {
             nextFruits.push({
               ...f,
               x: nextX,
@@ -325,7 +328,7 @@ export default function Home() {
     };
   }, [isPlaying]);
 
-  // High score update
+  // Update Leaderboard on Game Over
   useEffect(() => {
     if (gameOver && address && score > 0) {
       if (score > highScore) {
@@ -351,27 +354,32 @@ export default function Home() {
     }
   }, [gameOver, score, highScore, address]);
 
-  // Slash interaction
-  const checkSliceAtPosition = (clientX: number, clientY: number) => {
+  // Slice & Interaction Logic
+  const handleSlice = (clientX: number, clientY: number) => {
     if (!gameAreaRef.current || !isPlayingRef.current) return;
     const rect = gameAreaRef.current.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const slashX = clientX - rect.left;
+    const slashY = clientY - rect.top;
 
-    setTrail((prev) => [...prev.slice(-14), { x, y, id: Math.random() }]);
+    setTrail((prev) => [...prev.slice(-14), { x: slashX, y: slashY, id: Math.random() }]);
 
     setFruits((prev) =>
       prev.map((f) => {
         if (!f.sliced) {
-          const dist = Math.hypot(f.x + 18 - x, f.y + 18 - y);
-          if (dist < 40) {
+          const distX = Math.abs(f.x + 20 - slashX);
+          const distY = Math.abs(f.y + 20 - slashY);
+
+          if (distX < 38 && distY < 38) {
             if (f.isBomb) {
+              // Bomb hit -> Game Over
               playSound('bomb');
               triggerGameOver();
             } else if (f.isStone) {
+              // Stone hit -> Deduct 1 life
               playSound('stone');
               deductLife();
             } else {
+              // Fruit slice -> +1 point
               playSound('slice');
               setScore((s) => s + 1);
             }
@@ -404,7 +412,7 @@ export default function Home() {
               )}
               <button
                 onClick={handleDisconnect}
-                className="text-xs bg-rose-500/20 text-rose-300 hover:bg-rose-500 hover:text-white font-bold px-2 py-0.5 rounded-lg border border-rose-500/30 transition"
+                className="text-xs bg-rose-500/20 text-rose-300 hover:bg-rose-500 hover:text-white font-bold px-2 py-0.5 rounded-lg border border-rose-500/30 transition cursor-pointer"
               >
                 Exit
               </button>
@@ -420,7 +428,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Container */}
+      {/* Main Game Interface */}
       <div className="w-full max-w-md my-auto flex flex-col items-center gap-4">
         {!isConnected ? (
           <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
@@ -473,16 +481,16 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Slicing Interactive Canvas */}
+            {/* Slicing Canvas */}
             <div
               ref={gameAreaRef}
-              onMouseMove={(e) => checkSliceAtPosition(e.clientX, e.clientY)}
+              onMouseMove={(e) => handleSlice(e.clientX, e.clientY)}
               onTouchMove={(e) => {
-                if (e.touches[0]) checkSliceAtPosition(e.touches[0].clientX, e.touches[0].clientY);
+                if (e.touches[0]) handleSlice(e.touches[0].clientX, e.touches[0].clientY);
               }}
               className="relative w-full h-[390px] bg-gradient-to-b from-slate-950/40 to-slate-900/60 flex items-center justify-center overflow-hidden select-none cursor-crosshair touch-none"
             >
-              {/* Blade Slash Trace SVG */}
+              {/* Slash Trail */}
               <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
                 {trail.map((point, index) => {
                   if (index === 0) return null;
@@ -495,7 +503,7 @@ export default function Home() {
                       x2={point.x}
                       y2={point.y}
                       stroke="#38bdf8"
-                      strokeWidth={Math.max(1.5, index * 0.8)}
+                      strokeWidth={Math.max(2, index * 0.8)}
                       strokeLinecap="round"
                       opacity={index / trail.length}
                     />
@@ -507,7 +515,9 @@ export default function Home() {
                 <div className="text-center p-6 flex flex-col items-center z-20">
                   <span className="text-6xl mb-3 animate-bounce">⚔️</span>
                   <h3 className="text-xl font-black text-slate-100">Ready to Slice?</h3>
-                  <p className="text-xs text-slate-400 mt-1 mb-6">Slice fruits! Avoid 💣 Bombs and 🪨 Rocks (-1 Life)!</p>
+                  <p className="text-xs text-slate-400 mt-1 mb-6">
+                    Slice fruits! Hit 🪨 Stone = -1 Life. Hit 💣 Bomb = Game Over!
+                  </p>
                   <button
                     onClick={startGame}
                     className="px-8 py-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
@@ -532,7 +542,7 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Fruits and Bombs */}
+              {/* Items */}
               {fruits.map((f) => (
                 <div
                   key={f.id}
@@ -589,7 +599,7 @@ export default function Home() {
             rel="noopener noreferrer"
             className="text-slate-200 font-semibold underline hover:text-blue-400 transition"
           >
-            0xboysun
+            @0xboysun
           </a>
         </span>
         <span className="text-[10px] font-mono text-slate-600">
