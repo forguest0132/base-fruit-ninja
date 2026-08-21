@@ -1,216 +1,351 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
-import sdk from '@farcaster/frame-sdk';
-import FruitNinjaGame from '@/components/FruitNinjaGame';
-import Leaderboard, { LeaderboardEntry } from '@/components/Leaderboard';
-import { ShieldCheck, Share2, Trophy, Play, LogOut } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 
-const INITIAL_WEEKLY: LeaderboardEntry[] = [
-  { address: '0xBoysun...7f92', score: 480 },
-  { address: '0xAlpha...12c4', score: 420 },
-  { address: '0xNinja...88e1', score: 395 },
-  { address: '0xBaseGod...34a9', score: 310 },
-  { address: '0xSamurai...99f0', score: 275 },
-];
+const CONTRACT_ADDRESS = '0xd807742953d3cB55334f53495B5a3b08837c342E';
+const BUILDER_WALLET = '0x4ECd53055A78bdB5DAfe9ba5154e48906FBe6AEc'.toLowerCase();
 
-const INITIAL_GLOBAL: LeaderboardEntry[] = [
-  { address: '0xBaseGod...34a9', score: 1250 },
-  { address: '0xBoysun...7f92', score: 1120 },
-  { address: '0xCyber...44b2', score: 980 },
-  { address: '0xAlpha...12c4', score: 850 },
-  { address: '0xRonin...00d7', score: 790 },
-];
+const SESSION_ABI = [
+  {
+    type: 'function',
+    name: 'startSession',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'recordScore',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: '_score', type: 'uint256' }],
+    outputs: [],
+  },
+] as const;
+
+interface FruitItem {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  emoji: string;
+  isBomb: boolean;
+  sliced: boolean;
+  size: number;
+}
 
 export default function Home() {
   const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
-  const { disconnect } = useDisconnect();
+  const [score, setScore] = useState(0);
+  const [highScore, setHighScore] = useState(0);
+  const [lives, setLives] = useState(3);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [fruits, setFruits] = useState<FruitItem[]>([]);
 
-  const [currentView, setCurrentView] = useState<'game' | 'leaderboard'>('game');
-  const [weeklyScores, setWeeklyScores] = useState<LeaderboardEntry[]>(INITIAL_WEEKLY);
-  const [globalScores, setGlobalScores] = useState<LeaderboardEntry[]>(INITIAL_GLOBAL);
-  const [farcasterUser, setFarcasterUser] = useState<string | null>(null);
+  const { data: hash, writeContract, isPending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const fruitsRef = useRef<FruitItem[]>([]);
+  fruitsRef.current = fruits;
+
+  // Format address: 0x12...a1b2c3 (4 prefix, ..., 6 suffix)
+  const formatAddress = (addr: string | undefined) => {
+    if (!addr) return '';
+    return `${addr.slice(0, 4)}...${addr.slice(-6)}`;
+  };
+
+  // Check Builder Whitelist or Session Status
   useEffect(() => {
-    const initSdk = async () => {
-      try {
-        const context = await sdk.context;
-        if (context?.user?.username) {
-          setFarcasterUser(`@${context.user.username}`);
-        }
-        await sdk.actions.ready();
-      } catch (err) {
-        console.log('Frame SDK context loaded', err);
-      }
-    };
-    initSdk();
-  }, []);
+    if (!isConnected || !address) {
+      setIsSessionActive(false);
+      return;
+    }
 
-  const formattedAddress = farcasterUser
-    ? farcasterUser
-    : address
-    ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}`
-    : null;
+    if (address.toLowerCase() === BUILDER_WALLET) {
+      setIsSessionActive(true); // Builder bypasses gas requirement completely
+      return;
+    }
 
+    const savedSession = sessionStorage.getItem(`session_${address.toLowerCase()}`);
+    if (savedSession === 'active') {
+      setIsSessionActive(true);
+    } else {
+      setIsSessionActive(false);
+    }
+  }, [address, isConnected]);
+
+  // Handle successful transaction confirmation
   useEffect(() => {
-    const savedWeekly = localStorage.getItem('fn_weekly_scores');
-    const savedGlobal = localStorage.getItem('fn_global_scores');
-    if (savedWeekly) setWeeklyScores(JSON.parse(savedWeekly));
-    if (savedGlobal) setGlobalScores(JSON.parse(savedGlobal));
-  }, []);
+    if (isConfirmed && address) {
+      sessionStorage.setItem(`session_${address.toLowerCase()}`, 'active');
+      setIsSessionActive(true);
+    }
+  }, [isConfirmed, address]);
 
-  const handleGameOver = (finalScore: number) => {
-    if (finalScore <= 0 || !formattedAddress) return;
+  // Load High Score
+  useEffect(() => {
+    if (address) {
+      const saved = localStorage.getItem(`highScore_${address.toLowerCase()}`);
+      if (saved) setHighScore(parseInt(saved, 10));
+    }
+  }, [address]);
 
-    const currentAddr = formattedAddress;
-
-    const updateScoreList = (prev: LeaderboardEntry[]) => {
-      const existingIdx = prev.findIndex(item => item.address.toLowerCase() === currentAddr.toLowerCase());
-      let updated = [...prev];
-
-      if (existingIdx >= 0) {
-        if (finalScore > updated[existingIdx].score) {
-          updated[existingIdx] = { ...updated[existingIdx], score: finalScore, timestamp: Date.now() };
-        }
-      } else {
-        updated.push({ address: currentAddr, score: finalScore, timestamp: Date.now() });
-      }
-
-      return updated.sort((a, b) => b.score - a.score);
-    };
-
-    setWeeklyScores(prev => {
-      const updated = updateScoreList(prev);
-      localStorage.setItem('fn_weekly_scores', JSON.stringify(updated));
-      return updated;
-    });
-
-    setGlobalScores(prev => {
-      const updated = updateScoreList(prev);
-      localStorage.setItem('fn_global_scores', JSON.stringify(updated));
-      return updated;
+  // Trigger Onchain Session Start (0 ETH fee)
+  const handleStartSession = () => {
+    if (address?.toLowerCase() === BUILDER_WALLET) {
+      setIsSessionActive(true);
+      return;
+    }
+    writeContract({
+      address: CONTRACT_ADDRESS,
+      abi: SESSION_ABI,
+      functionName: 'startSession',
     });
   };
 
-  const handleConnectBase = () => {
-    const coinbaseConnector = connectors.find(c => c.id === 'coinbaseWalletSDK') || connectors[0];
-    if (coinbaseConnector) {
-      connect({ connector: coinbaseConnector });
-    }
+  // Start Game
+  const startGame = () => {
+    setScore(0);
+    setLives(3);
+    setGameOver(false);
+    setIsPlaying(true);
+    setFruits([]);
   };
 
-  const shareOnBase = () => {
-    const text = encodeURIComponent('🍉 Slicing fruits in Base Fruit Ninja! Avoided stones and ranked up. Play gasless on Base 👇');
-    try {
-      sdk.actions.openUrl(`https://warpcast.com/~/compose?text=${text}&embeds[]=https://base-fruit-ninja-hazel.vercel.app`);
-    } catch {
-      window.open(`https://warpcast.com/~/compose?text=${text}&embeds[]=https://base-fruit-ninja-hazel.vercel.app`, '_blank');
+  // Game Engine Loop
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const interval = setInterval(() => {
+      if (Math.random() < 0.65) {
+        const isBomb = Math.random() < 0.2;
+        const emojis = ['🍉', '🍎', '🍌', '🍍', '🍓', '🍊', '🍇'];
+        const newFruit: FruitItem = {
+          id: Date.now() + Math.random(),
+          x: Math.random() * 260 + 20,
+          y: 450,
+          vx: (Math.random() - 0.5) * 4,
+          vy: -(Math.random() * 4 + 10),
+          emoji: isBomb ? '💣' : emojis[Math.floor(Math.random() * emojis.length)],
+          isBomb,
+          sliced: false,
+          size: 40,
+        };
+        setFruits((prev) => [...prev, newFruit]);
+      }
+    }, 900);
+
+    const updatePhysics = () => {
+      setFruits((prev) =>
+        prev
+          .map((f) => ({
+            ...f,
+            x: f.x + f.vx,
+            y: f.y + f.vy,
+            vy: f.vy + 0.22,
+          }))
+          .filter((f) => {
+            if (f.y > 480 && !f.sliced && !f.isBomb) {
+              setLives((l) => {
+                if (l <= 1) {
+                  setGameOver(true);
+                  setIsPlaying(false);
+                  return 0;
+                }
+                return l - 1;
+              });
+            }
+            return f.y < 500;
+          })
+      );
+      animationFrameRef.current = requestAnimationFrame(updatePhysics);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(updatePhysics);
+
+    return () => {
+      clearInterval(interval);
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [isPlaying]);
+
+  // Handle Score Updates
+  useEffect(() => {
+    if (score > highScore && address) {
+      setHighScore(score);
+      localStorage.setItem(`highScore_${address.toLowerCase()}`, score.toString());
     }
+  }, [score, highScore, address]);
+
+  // Slice Fruit Handler
+  const sliceItem = (id: number) => {
+    setFruits((prev) =>
+      prev.map((f) => {
+        if (f.id === id && !f.sliced) {
+          if (f.isBomb) {
+            setGameOver(true);
+            setIsPlaying(false);
+          } else {
+            setScore((s) => s + 1);
+          }
+          return { ...f, sliced: true };
+        }
+        return f;
+      })
+    );
   };
 
   return (
-    <main className="min-h-screen bg-[#0d0b09] text-white flex flex-col items-center justify-start p-3 sm:p-6 selection:bg-amber-500 overflow-y-auto">
-      {/* Top Header */}
-      <div className="w-full max-w-md flex justify-between items-center mb-3 px-1 pt-2">
+    <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-between p-4 selection:bg-blue-500 selection:text-white">
+      {/* Top Bar */}
+      <header className="w-full max-w-md flex justify-between items-center py-2 px-4 bg-slate-900/80 backdrop-blur rounded-2xl border border-slate-800 shadow-lg">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-[#0052FF] shadow-[0_0_8px_#0052FF]" />
-          <span className="text-xs font-mono font-bold tracking-wider text-zinc-300 uppercase">
-            Base Mini App
-          </span>
+          <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
+          <span className="font-black text-sm tracking-wide text-slate-200">BASE NINJA</span>
         </div>
-
-        {formattedAddress ? (
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-[11px] font-mono bg-[#1c1813] border border-[#3d3226] px-3 py-1.5 rounded-full text-emerald-400">
-              <ShieldCheck className="w-3.5 h-3.5" /> {formattedAddress}
+        <div>
+          {isConnected && address ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs bg-slate-800 text-blue-400 font-mono px-2.5 py-1 rounded-full border border-blue-500/30">
+                {formatAddress(address)}
+              </span>
+              {address.toLowerCase() === BUILDER_WALLET && (
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.5 rounded border border-amber-500/40">
+                  BUILDER
+                </span>
+              )}
             </div>
-            {isConnected && (
-              <button
-                onClick={() => disconnect()}
-                title="Disconnect Wallet"
-                className="p-1.5 rounded-full bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-400 hover:text-rose-300 transition-all cursor-pointer shadow-sm active:scale-95 flex items-center justify-center"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            )}
+          ) : (
+            <span className="text-xs text-slate-500 font-medium">Not Connected</span>
+          )}
+        </div>
+      </header>
+
+      {/* Main Game Screen */}
+      <div className="w-full max-w-md my-auto flex flex-col items-center">
+        {/* Verification / Session Check */}
+        {!isConnected ? (
+          <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
+            <span className="text-5xl">🍉</span>
+            <h1 className="text-2xl font-black mt-4 text-slate-100">Base Fruit Ninja</h1>
+            <p className="text-xs text-slate-400 mt-2 mb-6">Connect your Base wallet or open in Base App to start playing.</p>
+            <div className="text-xs text-blue-400 font-mono bg-blue-950/40 py-2 px-3 rounded-xl border border-blue-800/40">
+              ⚡ Connect in Base App / Farcaster
+            </div>
+          </div>
+        ) : !isSessionActive ? (
+          <div className="w-full p-8 bg-slate-900/90 rounded-3xl border border-slate-800 text-center shadow-2xl">
+            <span className="text-5xl">🎟️</span>
+            <h2 className="text-xl font-bold mt-4 text-slate-100">Start Onchain Session</h2>
+            <p className="text-xs text-slate-400 mt-2 mb-6 leading-relaxed">
+              Create an onchain play session on Base. 0 ETH fee (only standard micro-gas applied). Unlimited plays for this session!
+            </p>
+            <button
+              onClick={handleStartSession}
+              disabled={isPending || isConfirming}
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-bold rounded-2xl transition-all shadow-lg shadow-blue-600/30 disabled:opacity-50"
+            >
+              {isPending ? 'Check Wallet...' : isConfirming ? 'Creating Session...' : 'Start Session 🔵'}
+            </button>
           </div>
         ) : (
-          <button
-            onClick={handleConnectBase}
-            className="flex items-center gap-1.5 text-xs font-bold bg-[#0052FF] hover:bg-[#0045d8] text-white px-3.5 py-1.5 rounded-full transition-all shadow-md active:scale-95 cursor-pointer"
-          >
-            Connect Base
-          </button>
+          <div className="w-full relative bg-slate-900/90 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col items-center">
+            {/* Game Stats Header */}
+            <div className="w-full flex justify-between items-center p-4 bg-slate-950/40 border-b border-slate-800/60">
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Score</span>
+                <span className="text-2xl font-black text-blue-400 font-mono">{score}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Lives</span>
+                <div className="flex gap-1 text-sm mt-0.5">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <span key={i} className={i < lives ? 'opacity-100' : 'opacity-20'}>
+                      ❤️
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Best</span>
+                <span className="text-2xl font-black text-amber-400 font-mono">{highScore}</span>
+              </div>
+            </div>
+
+            {/* Game Field */}
+            <div className="relative w-full h-[440px] bg-gradient-to-b from-slate-950/30 to-slate-900/50 flex items-center justify-center overflow-hidden select-none">
+              {!isPlaying && !gameOver && (
+                <div className="text-center p-6 flex flex-col items-center">
+                  <span className="text-6xl mb-3 animate-bounce">⚔️</span>
+                  <h3 className="text-xl font-black text-slate-100">Ready to Slice?</h3>
+                  <p className="text-xs text-slate-400 mt-1 mb-6">Slice flying fruits, avoid 💣 bombs!</p>
+                  <button
+                    onClick={startGame}
+                    className="px-8 py-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30"
+                  >
+                    Play Now 🍉
+                  </button>
+                </div>
+              )}
+
+              {gameOver && (
+                <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-6 text-center">
+                  <span className="text-5xl mb-2">💥</span>
+                  <h3 className="text-2xl font-black text-red-400">Game Over</h3>
+                  <p className="text-sm text-slate-300 mt-1">Final Score: <span className="font-bold text-blue-400 font-mono">{score}</span></p>
+                  <p className="text-xs text-slate-400 mb-6">Best: <span className="font-bold text-amber-400 font-mono">{highScore}</span></p>
+                  <button
+                    onClick={startGame}
+                    className="px-8 py-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-2xl transition shadow-lg shadow-blue-600/30"
+                  >
+                    Play Again 🔄
+                  </button>
+                </div>
+              )}
+
+              {/* Slicing Objects */}
+              {fruits.map((f) => (
+                <div
+                  key={f.id}
+                  onMouseEnter={() => sliceItem(f.id)}
+                  onTouchStart={() => sliceItem(f.id)}
+                  style={{
+                    transform: `translate(${f.x}px, ${f.y}px)`,
+                    opacity: f.sliced ? 0 : 1,
+                    transition: f.sliced ? 'opacity 0.15s ease-out' : 'none',
+                  }}
+                  className="absolute cursor-pointer text-4xl select-none touch-none hover:scale-125 transition-transform"
+                >
+                  {f.emoji}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Gasless Sponsored Badge */}
-      <div className="w-full max-w-md bg-emerald-950/40 border border-emerald-800/40 rounded-xl px-3 py-1.5 mb-3 flex items-center justify-between text-[10px] font-mono text-emerald-300">
-        <span>⚡ 100% Gasless Gameplay</span>
-        <span className="text-emerald-400 font-bold">0xboysun</span>
-      </div>
-
-      {/* Main Mode Switcher */}
-      <div className="w-full max-w-md flex bg-[#1c1813] p-1 rounded-2xl border border-[#3d3226] mb-3 shadow-md">
-        <button
-          onClick={() => setCurrentView('game')}
-          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            currentView === 'game' ? 'bg-[#0052FF] text-white shadow-md' : 'text-zinc-400 hover:text-white'
-          }`}
-        >
-          <Play className="w-3.5 h-3.5" /> Play
-        </button>
-
-        <button
-          onClick={() => setCurrentView('leaderboard')}
-          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            currentView === 'leaderboard' ? 'bg-[#0052FF] text-white shadow-md' : 'text-zinc-400 hover:text-white'
-          }`}
-        >
-          <Trophy className="w-3.5 h-3.5 text-amber-400" /> Leaderboard
-        </button>
-      </div>
-
-      {/* Main View */}
-      {currentView === 'game' ? (
-        <FruitNinjaGame userAddress={formattedAddress || 'Player'} onGameOver={handleGameOver} />
-      ) : (
-        <Leaderboard
-          userAddress={formattedAddress || undefined}
-          weeklyScores={weeklyScores}
-          globalScores={globalScores}
-        />
-      )}
-
-      {/* Social Feed Share & Creator Ownership Footer */}
-      <div className="w-full max-w-md mt-3 pb-6 flex flex-col items-center gap-2">
-        <button
-          onClick={shareOnBase}
-          className="w-full py-3 rounded-2xl bg-[#1c1813] hover:bg-[#26201a] border border-[#3d3226] text-zinc-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
-        >
-          <Share2 className="w-4 h-4 text-[#0052FF]" /> Share on Base Feed
-        </button>
-
-        {/* Permanent Creator Attribution */}
-        <div className="w-full bg-[#14120e] border border-[#2d251d] rounded-xl p-2.5 mt-2 flex flex-col items-center justify-center gap-1 text-center">
-          <div className="text-[11px] font-mono text-zinc-400">
-            Built on <span className="text-[#0052FF] font-bold">Base 🔵</span> by{' '}
-            <a
-              href="https://warpcast.com/0xboysun"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-white hover:text-[#0052FF] font-semibold underline decoration-dotted"
-            >
-              @0xboysun
-            </a>
-          </div>
-          <div className="text-[10px] font-mono text-zinc-500 bg-[#0d0b09] px-2 py-0.5 rounded border border-[#262019]">
-            Dev: 0x4ECd53055A78bdB5DAfe9ba5154e48906FBe6AEc
-          </div>
-        </div>
-      </div>
+      {/* Footer Attribution */}
+      <footer className="w-full max-w-md flex flex-col items-center gap-1.5 py-2 text-center">
+        <span className="text-[11px] text-slate-400">
+          Built on <span className="text-blue-400 font-semibold">Base</span> by{' '}
+          <a
+            href="https://warpcast.com/0xboysun"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-slate-200 font-semibold underline hover:text-blue-400 transition"
+          >
+            @0xboysun
+          </a>
+        </span>
+        <span className="text-[10px] font-mono text-slate-600">
+          Contract: {formatAddress(CONTRACT_ADDRESS)}
+        </span>
+      </footer>
     </main>
   );
 }
