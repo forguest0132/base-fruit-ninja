@@ -56,7 +56,7 @@ export default function Home() {
   const [gameOver, setGameOver] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
 
-  // Modal State
+  // Leaderboard Modal State
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
@@ -159,7 +159,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const savedLb = localStorage.getItem('base_ninja_leaderboard_global');
+    const savedLb = localStorage.getItem('base_ninja_leaderboard_all');
     if (savedLb) {
       try {
         setLeaderboard(JSON.parse(savedLb));
@@ -288,7 +288,7 @@ export default function Home() {
           updated.push({ address: activeAddress, score: finalScore, timestamp: Date.now() });
         }
         updated.sort((a, b) => b.score - a.score);
-        localStorage.setItem('base_ninja_leaderboard_global', JSON.stringify(updated));
+        localStorage.setItem('base_ninja_leaderboard_all', JSON.stringify(updated));
         return updated;
       });
     }
@@ -321,7 +321,7 @@ export default function Home() {
     setIsPlaying(true);
   };
 
-  // Canvas Engine Loop
+  // Canvas Loop
   useEffect(() => {
     if (!isSessionActive) return;
 
@@ -338,7 +338,7 @@ export default function Home() {
 
       ctx.clearRect(0, 0, width, height);
 
-      // Spawning Loop
+      // Spawning
       if (g.isPlaying && Date.now() - g.lastSpawn > g.spawnInterval) {
         g.lastSpawn = Date.now();
         const rand = Math.random();
@@ -371,7 +371,7 @@ export default function Home() {
         });
       }
 
-      // Render Game Objects
+      // Render Objects
       for (let i = g.objects.length - 1; i >= 0; i--) {
         const obj = g.objects[i];
 
@@ -506,26 +506,11 @@ export default function Home() {
     }
   };
 
-  // Weekly Leaderboard (Monday 12:00 AM UTC reset)
-  const getWeeklyLeaderboard = () => {
-    const now = new Date();
-    const dayOfWeek = now.getUTCDay();
-    const diffToMonday = (dayOfWeek + 6) % 7;
-    const startOfWeek = new Date(Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate() - diffToMonday,
-      0, 0, 0, 0
-    )).getTime();
-
-    return leaderboard.filter((item) => item.timestamp && item.timestamp >= startOfWeek);
-  };
-
   if (!mounted) return null;
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-between p-4 selection:bg-blue-500 selection:text-white">
-      {/* Top Header */}
+      {/* Header */}
       <header className="w-full max-w-md flex justify-between items-center py-2.5 px-4 bg-slate-900/80 backdrop-blur rounded-2xl border border-slate-800 shadow-lg">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
@@ -669,7 +654,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* Leaderboard Modal Integration */}
+      {/* Leaderboard Modal */}
       {isLeaderboardOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="relative w-full max-w-md">
@@ -681,8 +666,7 @@ export default function Home() {
             </button>
             <Leaderboard
               userAddress={activeAddress || undefined}
-              weeklyScores={getWeeklyLeaderboard()}
-              globalScores={leaderboard}
+              allScores={leaderboard}
             />
           </div>
         </div>

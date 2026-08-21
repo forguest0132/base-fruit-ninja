@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Calendar, Globe, Clock, Trophy, Users, UserCheck } from 'lucide-react';
+import { Trophy, Users, UserCheck, Clock } from 'lucide-react';
 
 export interface LeaderboardEntry {
   address: string;
@@ -19,18 +19,18 @@ export default function Leaderboard({ userAddress, allScores }: LeaderboardProps
 
   const formatAddress = (addr: string) => (addr ? `${addr.slice(0, 4)}...${addr.slice(-6)}` : '');
 
-  // Calculate Monday 00:00 UTC for current and last week
+  // Monday 00:00 UTC calculation
   const now = new Date();
   const dayOfWeek = now.getUTCDay();
   const diffToMonday = (dayOfWeek + 6) % 7;
-  
+
   const currentWeekStart = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffToMonday, 0, 0, 0, 0)
   ).getTime();
-  
+
   const lastWeekStart = currentWeekStart - 7 * 24 * 60 * 60 * 1000;
 
-  // 1. Current Weekly Running (All Players)
+  // 1. Weekly Running (All Players)
   const getWeeklyScores = () =>
     allScores
       .filter((s) => s.timestamp && s.timestamp >= currentWeekStart)
@@ -52,7 +52,6 @@ export default function Leaderboard({ userAddress, allScores }: LeaderboardProps
 
   const currentList = activeTab === 'weekly' ? weekly : activeTab === 'lastWeek' ? lastWeek : global;
 
-  // Check if current user is present for active tab
   let displayList = [...currentList];
   if (userAddress && !displayList.some((item) => item.address.toLowerCase() === userAddress.toLowerCase())) {
     if (activeTab !== 'lastWeek') {
@@ -87,7 +86,7 @@ export default function Leaderboard({ userAddress, allScores }: LeaderboardProps
         </div>
       </div>
 
-      {/* Tabs: WEEKLY, LAST WEEK, GLOBAL */}
+      {/* Tabs */}
       <div className="flex bg-[#26201a] p-1 rounded-2xl border border-[#3d3226] mb-3">
         <button
           onClick={() => setActiveTab('weekly')}
@@ -132,7 +131,7 @@ export default function Leaderboard({ userAddress, allScores }: LeaderboardProps
         </span>
       </div>
 
-      {/* Persistent Standing for Connected User */}
+      {/* User Standing Card */}
       {currentUserEntry && activeTab !== 'lastWeek' && (
         <div className="mb-3 p-3 rounded-2xl bg-gradient-to-r from-[#0052FF]/25 to-transparent border border-[#0052FF]/60 flex items-center justify-between shadow-[0_0_15px_rgba(0,82,255,0.15)]">
           <div className="flex items-center gap-2.5">
@@ -155,8 +154,8 @@ export default function Leaderboard({ userAddress, allScores }: LeaderboardProps
         </div>
       )}
 
-      {/* Leaderboard Entries */}
-      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+      {/* Scrollable Entry List */}
+      <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
         {sortedList.length === 0 ? (
           <div className="text-center py-8 text-xs font-mono text-zinc-500">
             {activeTab === 'lastWeek' ? 'No scores recorded in the last week!' : 'No entries yet. Be the first!'}
