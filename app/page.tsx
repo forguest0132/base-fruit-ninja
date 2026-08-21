@@ -146,10 +146,10 @@ export default function Home() {
         )}
       </div>
 
-      {/* Gasless Sponsored Badge */}
+      {/* Gasless Sponsored Badge with 0xboysun */}
       <div className="w-full max-w-md bg-emerald-950/40 border border-emerald-800/40 rounded-xl px-3 py-1.5 mb-3 flex items-center justify-between text-[10px] font-mono text-emerald-300">
         <span>⚡ 100% Gasless Gameplay</span>
-        <span className="text-emerald-400 font-bold">Base Network</span>
+        <span className="text-emerald-400 font-bold">Sponsored by 0xboysun</span>
       </div>
 
       {/* Main Mode Switcher */}
@@ -185,7 +185,7 @@ export default function Home() {
       )}
 
       {/* Social Feed Share & Creator Ownership Footer */}
-      <div className="w-full max-w-md mt-3 pb-6 flex flex-col items-center gap-2.5">
+      <div className="w-full max-w-md mt-3 pb-6 flex flex-col items-center gap-2">
         <button
           onClick={shareOnBase}
           className="w-full py-3 rounded-2xl bg-[#1c1813] hover:bg-[#26201a] border border-[#3d3226] text-zinc-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
@@ -193,20 +193,22 @@ export default function Home() {
           <Share2 className="w-4 h-4 text-[#0052FF]" /> Share on Base Feed
         </button>
 
-        {/* Developer Attribution */}
-        <div className="text-[11px] font-mono text-zinc-500 text-center">
-          Built on Base 🔵 by{' '}
-          <a
-            href="https://warpcast.com/0xboysun"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#0052FF] font-semibold hover:underline"
-          >
-            @0xboysun
-          </a>{' '}
-          <span className="text-[10px] text-zinc-600 block sm:inline">
-            (0x4ECd...6AEc)
-          </span>
+        {/* Permanent Creator Attribution */}
+        <div className="w-full bg-[#14120e] border border-[#2d251d] rounded-xl p-2.5 mt-2 flex flex-col items-center justify-center gap-1 text-center">
+          <div className="text-[11px] font-mono text-zinc-400">
+            Built on <span className="text-[#0052FF] font-bold">Base 🔵</span> by{' '}
+            <a
+              href="https://warpcast.com/0xboysun"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white hover:text-[#0052FF] font-semibold underline decoration-dotted"
+            >
+              @0xboysun
+            </a>
+          </div>
+          <div className="text-[10px] font-mono text-zinc-500 bg-[#0d0b09] px-2 py-0.5 rounded border border-[#262019]">
+            Dev: 0x4ECd53055A78bdB5DAfe9ba5154e48906FBe6AEc
+          </div>
         </div>
       </div>
     </main>
